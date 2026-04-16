@@ -1,0 +1,21 @@
+# Environment files
+.env
+.env.*
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# IDE/editor config
+.vscode/
+.idea/
+
+# Local data and logs
+data/
+*.log
+
+# OS files
+Thumbs.db
+.DS_Store
