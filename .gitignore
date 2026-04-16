@@ -19,3 +19,7 @@ data/
 # OS files
 Thumbs.db
 .DS_Store
+
+# virtual environment
+venv/
+env/
