@@ -9,11 +9,6 @@ A Discord bot for D&D 5e with campaign management, character sheets, combat tool
 - This project is still under active development.
 - Use the `wip` branch or a draft pull request when uploading to GitHub.
 
-## Security
-- Do not commit `.env` or any secret keys.
-- Keep your Discord bot token, OpenAI key, and Google API key private.
-- If you have exposed any token already, revoke it immediately.
-
 ## Setup
 1. Copy `.env.example` to `.env`.
 2. Fill in your own values.
