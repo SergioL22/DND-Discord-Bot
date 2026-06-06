@@ -22,8 +22,10 @@ class Config:
     OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
     OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
     OPENAI_BASE_URL = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1")
-    AI_MAX_TOKENS_SCENE = os.getenv("AI_MAX_TOKENS_SCENE", "800")
-    AI_MAX_TOKENS_TALK = os.getenv("AI_MAX_TOKENS_TALK", "400")
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+    CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-haiku-4-5")
+    AI_MAX_TOKENS_SCENE = os.getenv("AI_MAX_TOKENS_SCENE", "2000")
+    AI_MAX_TOKENS_TALK = os.getenv("AI_MAX_TOKENS_TALK", "1000")
 
     COLOR_PRIMARY = 0x7289DA  # Discord Blurple
     COLOR_SUCCESS = 0x43B581  # Green

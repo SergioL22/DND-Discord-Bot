@@ -3,7 +3,6 @@ import json
 import os
 import re
 import time
-from pathlib import Path
 from typing import Any, Dict, List
 from urllib import error, request
 
@@ -13,6 +12,13 @@ from discord import app_commands
 from discord.ext import commands
 
 from config import Config
+from utils import db
+
+try:
+    import anthropic as _anthropic
+    _ANTHROPIC_AVAILABLE = True
+except ImportError:
+    _ANTHROPIC_AVAILABLE = False
 
 
 class AIDM(commands.Cog):
@@ -30,7 +36,6 @@ class AIDM(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.sessions_file = getattr(Config, "AI_DM_SESSIONS_FILE", "data/ai_dm_sessions.json")
         self.ai_provider = getattr(Config, "AI_PROVIDER", os.getenv("AI_PROVIDER", "google")).strip().lower()
         self.google_api_key = getattr(Config, "GOOGLE_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
         self.gemini_model_name = getattr(Config, "GEMINI_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.0-flash"))
@@ -41,49 +46,26 @@ class AIDM(commands.Cog):
             "OPENAI_BASE_URL",
             os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
         ).rstrip("/")
+        self.anthropic_api_key = getattr(Config, "ANTHROPIC_API_KEY", os.getenv("ANTHROPIC_API_KEY", ""))
+        self.claude_model = getattr(Config, "CLAUDE_MODEL", os.getenv("CLAUDE_MODEL", "claude-haiku-4-5"))
         self.ai_max_tokens_scene = self._to_int(
-            getattr(Config, "AI_MAX_TOKENS_SCENE", os.getenv("AI_MAX_TOKENS_SCENE", 800)),
-            800,
+            getattr(Config, "AI_MAX_TOKENS_SCENE", os.getenv("AI_MAX_TOKENS_SCENE", 2000)),
+            2000,
         )
         self.ai_max_tokens_talk = self._to_int(
-            getattr(Config, "AI_MAX_TOKENS_TALK", os.getenv("AI_MAX_TOKENS_TALK", 400)),
-            400,
+            getattr(Config, "AI_MAX_TOKENS_TALK", os.getenv("AI_MAX_TOKENS_TALK", 1000)),
+            1000,
         )
         self._client = None
         self._fallback_models = ["gemini-2.0-flash", "gemini-1.5-flash"]
         if self.google_api_key:
             self._client = genai.Client(api_key=self.google_api_key)
-        self._ensure_sessions_file()
-
-    def _ensure_sessions_file(self) -> None:
-        path = Path(self.sessions_file)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if not path.exists():
-            path.write_text("{}", encoding="utf-8")
-
-    def _load_sessions(self) -> Dict[str, Dict[str, Any]]:
-        try:
-            with open(self.sessions_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                return data if isinstance(data, dict) else {}
-        except (json.JSONDecodeError, FileNotFoundError):
-            return {}
-
-    def _save_sessions(self, sessions: Dict[str, Dict[str, Any]]) -> None:
-        with open(self.sessions_file, "w", encoding="utf-8") as f:
-            json.dump(sessions, f, indent=2, ensure_ascii=False)
 
     def _get_or_create_session(self, channel_id: int) -> Dict[str, Any]:
-        sessions = self._load_sessions()
-        key = str(channel_id)
-
-        if key not in sessions:
-            sessions[key] = {
-                "campaign": {
-                    "title": "",
-                    "tone": "",
-                    "premise": "",
-                },
+        session = db.session_get(channel_id)
+        if session is None:
+            session = {
+                "campaign": {"title": "", "tone": "", "premise": ""},
                 "scene_summary": "",
                 "known_npcs": [],
                 "recent_events": [],
@@ -91,24 +73,14 @@ class AIDM(commands.Cog):
                 "history": [],
                 "updated_at": int(time.time()),
             }
-            self._save_sessions(sessions)
-
-        return sessions[key]
+            db.session_save(channel_id, session)
+        return session
 
     def _update_session(self, channel_id: int, session: Dict[str, Any]) -> None:
-        sessions = self._load_sessions()
-        sessions[str(channel_id)] = session
-        sessions[str(channel_id)]["updated_at"] = int(time.time())
-        self._save_sessions(sessions)
+        db.session_save(channel_id, session)
 
     def _delete_session(self, channel_id: int) -> bool:
-        sessions = self._load_sessions()
-        key = str(channel_id)
-        if key not in sessions:
-            return False
-        del sessions[key]
-        self._save_sessions(sessions)
-        return True
+        return db.session_delete(channel_id)
 
     def _ensure_provider(self) -> str:
         if self.ai_provider == "openai":
@@ -116,6 +88,16 @@ class AIDM(commands.Cog):
                 return (
                     "❌ Missing `OPENAI_API_KEY` in your `.env`. "
                     "Add it, restart the bot, and try again."
+                )
+            return ""
+
+        if self.ai_provider == "claude":
+            if not _ANTHROPIC_AVAILABLE:
+                return "❌ `anthropic` package not installed. Run: `pip install anthropic`"
+            if not self.anthropic_api_key:
+                return (
+                    "❌ Missing `ANTHROPIC_API_KEY` in your `.env`. "
+                    "Get one at console.anthropic.com, then restart the bot."
                 )
             return ""
 
@@ -129,6 +111,27 @@ class AIDM(commands.Cog):
     def _trim_history(self, history: List[Dict[str, str]], limit: int = 10) -> List[Dict[str, str]]:
         return history[-limit:]
 
+    @staticmethod
+    def _chunk_text(text: str, limit: int = 4000) -> List[str]:
+        """Split text into Discord-safe chunks, breaking at paragraph or sentence boundaries."""
+        if len(text) <= limit:
+            return [text]
+        chunks: List[str] = []
+        while text:
+            if len(text) <= limit:
+                chunks.append(text)
+                break
+            split_at = text.rfind("\n\n", 0, limit)
+            if split_at == -1:
+                split_at = text.rfind("\n", 0, limit)
+            if split_at == -1:
+                split_at = text.rfind(". ", 0, limit)
+            if split_at == -1:
+                split_at = limit
+            chunks.append(text[:split_at].rstrip())
+            text = text[split_at:].lstrip()
+        return chunks
+
     def _format_ai_error(self, err: Exception) -> str:
         raw = str(err)
         lowered = raw.lower()
@@ -138,6 +141,15 @@ class AIDM(commands.Cog):
 
         if "invalid_api_key" in lowered:
             return "❌ Invalid `OPENAI_API_KEY`. Check your `.env`, then restart the bot."
+
+        if "claude authentication" in lowered:
+            return "❌ Invalid `ANTHROPIC_API_KEY`. Check your `.env`, then restart the bot."
+
+        if "claude rate limit" in lowered:
+            return "❌ Claude rate limit hit. Please wait a moment and try again."
+
+        if "claude api error" in lowered:
+            return f"❌ Claude error: {raw}"
 
         if "resource_exhausted" in lowered or "quota exceeded" in lowered or "429" in lowered:
             retry_match = re.search(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", raw, flags=re.IGNORECASE)
@@ -224,26 +236,75 @@ class AIDM(commands.Cog):
         except Exception as e:
             raise RuntimeError(f"Invalid OpenAI response: {e}") from e
 
+    def _call_claude(self, system_prompt: str, user_prompt: str, max_tokens: int) -> str:
+        if not _ANTHROPIC_AVAILABLE:
+            raise RuntimeError(
+                "The `anthropic` package is not installed. Run: pip install anthropic"
+            )
+        client = _anthropic.Anthropic(api_key=self.anthropic_api_key)
+        try:
+            response = client.messages.create(
+                model=self.claude_model,
+                max_tokens=max_tokens,
+                system=system_prompt,
+                messages=[{"role": "user", "content": user_prompt}],
+            )
+        except _anthropic.AuthenticationError as e:
+            raise RuntimeError(f"Claude authentication error: {e}") from e
+        except _anthropic.RateLimitError as e:
+            raise RuntimeError(f"Claude rate limit exceeded: {e}") from e
+        except _anthropic.APIStatusError as e:
+            raise RuntimeError(f"Claude API error ({e.status_code}): {e.message}") from e
+        except Exception as e:
+            raise RuntimeError(f"Claude request failed: {e}") from e
+
+        text = next((b.text for b in response.content if b.type == "text"), "")
+        if not text.strip():
+            raise RuntimeError("Claude returned an empty response.")
+        return text
+
+    @staticmethod
+    def _rate_limit_delay(err: str) -> int:
+        """Return retry delay in seconds if this looks like a rate-limit error, else 0."""
+        low = err.lower()
+        is_limit = (
+            "resource_exhausted" in low or "429" in low
+            or "quota exceeded" in low or "claude rate limit" in low
+        )
+        if not is_limit:
+            return 0
+        match = re.search(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", err, re.IGNORECASE)
+        return int(float(match.group(1))) + 1 if match else 15
+
     async def _generate_json(self, system_prompt: str, user_prompt: str, max_tokens: int) -> Dict[str, Any]:
         full_prompt = f"{system_prompt}\n\n{user_prompt}"
-        try:
-            if self.ai_provider == "openai":
-                raw_text = await asyncio.to_thread(
-                    self._call_openai,
-                    system_prompt,
-                    user_prompt,
-                    max_tokens,
-                )
-            else:
-                raw_text = await asyncio.to_thread(
-                    self._call_gemini,
-                    full_prompt,
-                    max_tokens,
-                )
-        except RuntimeError:
-            raise
-        except Exception as e:
-            raise RuntimeError(f"AI request failed: {e}") from e
+        last_err: Exception = RuntimeError("Unknown error")
+        for attempt in range(2):
+            try:
+                if self.ai_provider == "openai":
+                    raw_text = await asyncio.to_thread(
+                        self._call_openai, system_prompt, user_prompt, max_tokens,
+                    )
+                elif self.ai_provider == "claude":
+                    raw_text = await asyncio.to_thread(
+                        self._call_claude, system_prompt, user_prompt, max_tokens,
+                    )
+                else:
+                    raw_text = await asyncio.to_thread(
+                        self._call_gemini, full_prompt, max_tokens,
+                    )
+                break
+            except RuntimeError as e:
+                last_err = e
+                delay = self._rate_limit_delay(str(e))
+                if delay and attempt == 0:
+                    await asyncio.sleep(delay)
+                    continue
+                raise
+            except Exception as e:
+                raise RuntimeError(f"AI request failed: {e}") from e
+        else:
+            raise last_err
 
         # Strip markdown code fences that Gemini sometimes wraps around JSON
         text = raw_text.strip()
@@ -335,9 +396,11 @@ class AIDM(commands.Cog):
         session["history"] = self._trim_history(session["history"])
         self._update_session(interaction.channel_id, session)
 
+        narration_chunks = self._chunk_text(opening_narration)
+
         embed = discord.Embed(
             title=f"🎬 {title.strip()} - Opening Scene",
-            description=opening_narration[:4000],
+            description=narration_chunks[0],
             color=discord.Color.blurple(),
         )
         embed.add_field(name="Tone", value=tone.strip()[:1024], inline=True)
@@ -353,6 +416,8 @@ class AIDM(commands.Cog):
             content=f"✅ AI campaign initialized for this channel: **{title.strip()}**",
             embed=embed,
         )
+        for chunk in narration_chunks[1:]:
+            await interaction.followup.send(content=chunk)
 
     @dm_group.command(name="delete_campaign", description="Delete AI DM campaign data for this channel")
     @app_commands.describe(confirm="Set to true to confirm deletion")
@@ -448,9 +513,11 @@ class AIDM(commands.Cog):
         session["history"] = self._trim_history(session["history"])
         self._update_session(interaction.channel_id, session)
 
+        narration_chunks = self._chunk_text(narration)
+
         embed = discord.Embed(
             title="📖 Scene Update",
-            description=narration[:4000],
+            description=narration_chunks[0],
             color=discord.Color.blurple(),
         )
         if new_npcs:
@@ -461,6 +528,8 @@ class AIDM(commands.Cog):
             embed.add_field(name="Combat Tension", value=combat_hint[:1024], inline=False)
 
         await interaction.followup.send(embed=embed)
+        for chunk in narration_chunks[1:]:
+            await interaction.followup.send(content=chunk)
 
     @dm_group.command(name="talk", description="Talk to an NPC with AI-driven dialogue")
     @app_commands.describe(npc_name="NPC you are speaking to", message="What your character says")
@@ -534,15 +603,19 @@ class AIDM(commands.Cog):
         session["history"] = self._trim_history(session["history"])
         self._update_session(interaction.channel_id, session)
 
+        dialogue_chunks = self._chunk_text(npc_dialogue)
+
         embed = discord.Embed(
             title=f"🗣️ {npc_name}",
-            description=npc_dialogue[:4000],
+            description=dialogue_chunks[0],
             color=discord.Color.green(),
         )
         if narration:
             embed.add_field(name="Scene", value=narration[:1024], inline=False)
 
         await interaction.followup.send(embed=embed)
+        for chunk in dialogue_chunks[1:]:
+            await interaction.followup.send(content=chunk)
 
 
 async def setup(bot: commands.Bot):

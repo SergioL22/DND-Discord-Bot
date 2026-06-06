@@ -66,27 +66,72 @@ class Help(commands.Cog):
             inline=False
         )
 
+        # Campaign Commands
+        campaign_commands = [
+            "`/campaign save` - Save the current AI session as a named campaign",
+            "`/campaign load` - Restore a saved campaign into this channel",
+            "`/campaign status` - Show the active campaign's scene, NPCs, and events",
+            "`/campaign list` - List all saved campaigns for this server",
+            "`/campaign export` - Download the full session log as a text file",
+            "`/campaign delete` - Delete a saved campaign",
+        ]
+        embed.add_field(
+            name="📚 Campaign Management",
+            value="\n".join(campaign_commands),
+            inline=False,
+        )
+
         # AI Dungeon Master Commands
         ai_dm_commands = [
             "`/dm start_campaign` - Initialize AI campaign context in this channel",
             "`/dm scene` - Generate the next story scene based on player action",
-            "`/dm talk` - Talk to an NPC with AI-driven dialogue"
+            "`/dm talk` - Talk to an NPC with AI-driven dialogue",
+            "`/dm delete_campaign` - Wipe the AI campaign data for this channel",
         ]
         embed.add_field(
             name="🤖 AI Dungeon Master",
             value="\n".join(ai_dm_commands),
-            inline=False
+            inline=False,
+        )
+
+        # Party Commands
+        party_commands = [
+            "`/party add` - Add one of your characters to the party roster",
+            "`/party remove` - Remove your character from the party",
+            "`/party list` - Show all party members with HP bars",
+            "`/party hp` - Apply healing or damage to the whole party",
+            "`/party xp` - Award XP to every party member",
+            "`/party clear` - Clear the entire party roster",
+        ]
+        embed.add_field(
+            name="🛡️ Party",
+            value="\n".join(party_commands),
+            inline=False,
+        )
+
+        # DM Tools
+        dm_tool_commands = [
+            "`/dmtool secret_roll` - Roll dice privately (only you see the result)",
+            "`/dmtool note` - Save a private DM note to the current session",
+            "`/dmtool notes` - View all your DM notes for this session",
+            "`/dmtool npc` - Generate a quick random NPC",
+            "`/dmtool encounter` - Roll a random encounter difficulty",
+        ]
+        embed.add_field(
+            name="🎭 DM Tools",
+            value="\n".join(dm_tool_commands),
+            inline=False,
         )
 
         # General Commands
         general_commands = [
             "`/help` - Show this help message",
-            "`/about` - About this bot"
+            "`/about` - About this bot",
         ]
         embed.add_field(
             name="ℹ️ General",
             value="\n".join(general_commands),
-            inline=False
+            inline=False,
         )
 
         embed.set_footer(text="Tip: Start typing / to see command autocomplete!")

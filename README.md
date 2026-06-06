@@ -1,6 +1,6 @@
 # Discord DND Bot
 
-> Work in progress. This repository is not production-ready yet.
+A Discord bot designed to support Dungeons & Dragons 5e sessions with campaign management, player character handling, combat utilities, dice rolling, and AI-driven DM storytelling. It helps manage game state, character data, combat flows, and creative scene generation from within Discord.
 
 ## About
 A Discord bot for D&D 5e with campaign management, character sheets, combat tools, and AI-driven DM features.
