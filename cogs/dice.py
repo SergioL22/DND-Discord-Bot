@@ -41,27 +41,31 @@ class Dice(commands.Cog):
     async def stats(self, interaction: discord.Interaction):
         scores = DiceRoller.roll_stats()
         score_lines = [f"**{ability.title()}**: {value}" for ability, value in scores.items()]
-        
-        # Store stats for character creation
+
         character_cog = self.bot.get_cog("Character")
         if character_cog:
             character_cog.store_rolled_stats(interaction.user.id, scores)
-        
+
         embed = discord.Embed(
             title="🎲 Rolled Ability Scores",
             description="\n".join(score_lines),
-            color=discord.Color.gold()
+            color=discord.Color.gold(),
         )
-        embed.set_footer(text="These stats are saved for 5 minutes. Use the button below to create a character!")
-        
+        embed.set_footer(text="Stats saved for 5 minutes. Use the button below to create a character!")
+
         view = CreateCharacterButton()
         await interaction.response.send_message(embed=embed, view=view, ephemeral=True)
+
+    @app_commands.command(name="d20", description="Quick d20 roll")
+    async def d20(self, interaction: discord.Interaction):
+        result = DiceRoller.roll("1d20")
+        await interaction.response.send_message(f"🎲 Rolled 1d20: {result}")
 
 
 class CreateCharacterButton(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=300)  # 5 minute timeout
-    
+        super().__init__(timeout=300)
+
     @discord.ui.button(label="Create Character with These Stats", style=discord.ButtonStyle.green, emoji="✨")
     async def create_character(self, interaction: discord.Interaction, button: discord.ui.Button):
         character_cog = interaction.client.get_cog("Character")
@@ -69,11 +73,6 @@ class CreateCharacterButton(discord.ui.View):
             await character_cog.open_character_creation_modal(interaction)
         else:
             await interaction.response.send_message("❌ Character system not available.", ephemeral=True)
-
-    @app_commands.command(name="d20", description="Quick d20 roll")
-    async def d20(self, interaction: discord.Interaction):
-        result = DiceRoller.roll("1d20")
-        await interaction.response.send_message(f"Rolled 1d20: {result}")
 
 
 async def setup(bot: commands.Bot):

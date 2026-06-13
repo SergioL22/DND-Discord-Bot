@@ -8,6 +8,11 @@ from utils.character_sheet import CharacterSheet
 from utils.database import get_database
 
 
+XP_THRESHOLDS = [
+    0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000,
+    85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000,
+]
+
 CLASS_CHOICES = [
     app_commands.Choice(name="Barbarian", value="Barbarian"),
     app_commands.Choice(name="Bard", value="Bard"),
@@ -34,6 +39,26 @@ RACE_CHOICES = [
     app_commands.Choice(name="Human", value="Human"),
     app_commands.Choice(name="Tiefling", value="Tiefling"),
 ]
+
+
+def _build_character_embed(character: "CharacterSheet") -> discord.Embed:
+    embed = discord.Embed(
+        title="✨ Character Created",
+        description=f"**{character.name}** is ready for adventure.",
+        color=discord.Color.green(),
+    )
+    embed.add_field(name="Class", value=character.character_class, inline=True)
+    embed.add_field(name="Race", value=character.race, inline=True)
+    embed.add_field(name="Level", value=str(character.level), inline=True)
+    embed.add_field(name="HP", value=f"{character.current_hp}/{character.max_hp}", inline=True)
+    embed.add_field(name="AC", value=str(character.armor_class), inline=True)
+    embed.add_field(name="Speed", value=f"{character.speed} ft", inline=True)
+    ability_text = "\n".join(
+        f"**{a.title()}**: {s} ({'+' if CharacterSheet.ability_modifier(s) >= 0 else ''}{CharacterSheet.ability_modifier(s)})"
+        for a, s in character.abilities.items()
+    )
+    embed.add_field(name="Ability Scores", value=ability_text, inline=False)
+    return embed
 
 
 class Character(commands.Cog):
@@ -154,25 +179,7 @@ class Character(commands.Cog):
             )
             self.db.save_character(character)
 
-            embed = discord.Embed(
-                title="✨ Character Created",
-                description=f"**{character.name}** is ready for adventure.",
-                color=discord.Color.green(),
-            )
-            embed.add_field(name="Class", value=character.character_class, inline=True)
-            embed.add_field(name="Race", value=character.race, inline=True)
-            embed.add_field(name="Level", value=str(character.level), inline=True)
-            embed.add_field(name="HP", value=f"{character.current_hp}/{character.max_hp}", inline=True)
-            embed.add_field(name="AC", value=str(character.armor_class), inline=True)
-            embed.add_field(name="Speed", value=f"{character.speed} ft", inline=True)
-
-            ability_text = "\n".join(
-                f"**{a.title()}**: {s} ({'+' if CharacterSheet.ability_modifier(s) >= 0 else ''}{CharacterSheet.ability_modifier(s)})"
-                for a, s in character.abilities.items()
-            )
-            embed.add_field(name="Ability Scores", value=ability_text, inline=False)
-
-            await interaction.response.send_message(embed=embed)
+            await interaction.response.send_message(embed=_build_character_embed(character))
         except ValueError as e:
             await interaction.response.send_message(f"❌ Error creating character: {e}", ephemeral=True)
 
@@ -366,9 +373,16 @@ class Character(commands.Cog):
             old_xp = character.exp
             character.add_xp(amount)
             self.db.save_character(character)
+
+            levelup_note = ""
+            next_level = character.level + 1
+            if next_level <= 20 and character.exp >= XP_THRESHOLDS[next_level - 1]:
+                levelup_note = f"\n🎉 **Ready to level up to level {next_level}!** Use `/levelup` to advance."
+
             await interaction.response.send_message(
                 f"✨ **{character.name}** gained {amount} XP.\n"
                 f"XP: {old_xp} → {character.exp}"
+                f"{levelup_note}"
             )
         except ValueError as e:
             await interaction.response.send_message(f"❌ {e}", ephemeral=True)
@@ -481,25 +495,7 @@ class NameInputModal(discord.ui.Modal, title="Character Name"):
             )
             self.db.save_character(character)
             
-            embed = discord.Embed(
-                title="✨ Character Created",
-                description=f"**{character.name}** is ready for adventure!",
-                color=discord.Color.green()
-            )
-            embed.add_field(name="Class", value=character.character_class, inline=True)
-            embed.add_field(name="Race", value=character.race, inline=True)
-            embed.add_field(name="Level", value=str(character.level), inline=True)
-            embed.add_field(name="HP", value=f"{character.current_hp}/{character.max_hp}", inline=True)
-            embed.add_field(name="AC", value=str(character.armor_class), inline=True)
-            embed.add_field(name="Speed", value=f"{character.speed} ft", inline=True)
-            
-            ability_text = "\n".join(
-                f"**{a.title()}**: {s} ({'+' if CharacterSheet.ability_modifier(s) >= 0 else ''}{CharacterSheet.ability_modifier(s)})"
-                for a, s in character.abilities.items()
-            )
-            embed.add_field(name="Ability Scores", value=ability_text, inline=False)
-            
-            await interaction.response.send_message(embed=embed)
+            await interaction.response.send_message(embed=_build_character_embed(character))
         except ValueError as e:
             await interaction.response.send_message(f"❌ Error creating character: {e}", ephemeral=True)
 

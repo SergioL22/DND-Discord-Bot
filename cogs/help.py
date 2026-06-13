@@ -13,124 +13,144 @@ class Help(commands.Cog):
     async def help_command(self, interaction: discord.Interaction):
         embed = discord.Embed(
             title="🎲 D&D Bot Commands",
-            description="Here are all available slash commands, organized by category:",
-            color=discord.Color.blurple()
+            description="All available slash commands, organized by category:",
+            color=discord.Color.blurple(),
         )
 
-        # Dice Rolling Commands
-        dice_commands = [
-            "`/roll` - Roll dice using standard notation (1d20, 2d6+3)",
-            "`/roll_adv` - Roll with advantage",
-            "`/roll_dis` - Roll with disadvantage",
-            "`/stats` - Roll ability scores (4d6 drop lowest)",
-            "`/d20` - Quick d20 roll"
-        ]
         embed.add_field(
             name="🎲 Dice Rolling",
-            value="\n".join(dice_commands),
-            inline=False
+            value=(
+                "`/roll` - Roll dice using standard notation (1d20, 2d6+3)\n"
+                "`/roll_adv` - Roll with advantage\n"
+                "`/roll_dis` - Roll with disadvantage\n"
+                "`/stats` - Roll ability scores (4d6 drop lowest)\n"
+                "`/d20` - Quick d20 roll"
+            ),
+            inline=False,
         )
 
-        # Character Management Commands
-        character_commands = [
-            "`/createchar` - Create a new character (with dropdowns for class/race)",
-            "`/viewchar` - View a character sheet",
-            "`/listchars` - List all your characters",
-            "`/deletechar` - Delete a character",
-            "`/hp` - Adjust character HP (+heal / -damage)",
-            "`/levelup` - Level up a character",
-            "`/addxp` - Add experience points to a character"
-        ]
         embed.add_field(
             name="📜 Character Management",
-            value="\n".join(character_commands),
-            inline=False
+            value=(
+                "`/createchar` - Create a new character (with dropdowns for class/race)\n"
+                "`/viewchar` - View a full character sheet\n"
+                "`/listchars` - List all your characters\n"
+                "`/deletechar` - Delete a character\n"
+                "`/hp` - Adjust character HP (+heal / -damage)\n"
+                "`/levelup` - Level up a character\n"
+                "`/addxp` - Add experience points to a character"
+            ),
+            inline=False,
         )
 
-        # Combat Commands
-        combat_commands = [
-            "`/combat start` - Start combat in this channel",
-            "`/combat join` - Join combat with one of your characters",
-            "`/combat addnpc` - Add an NPC/monster to initiative",
-            "`/combat status` - Show turn order and current turn",
-            "`/combat next` - Advance to the next turn",
-            "`/combat prev` - Move to the previous turn",
-            "`/combat damage` - Apply damage to a participant",
-            "`/combat heal` - Heal a participant",
-            "`/combat remove` - Remove a participant",
-            "`/combat end` - End the current combat encounter"
-        ]
         embed.add_field(
             name="⚔️ Combat",
-            value="\n".join(combat_commands),
-            inline=False
+            value=(
+                "`/combat start` - Start combat in this channel\n"
+                "`/combat join` - Join combat with one of your characters\n"
+                "`/combat addnpc` - Add an NPC/monster to initiative\n"
+                "`/combat status` - Show turn order and current turn\n"
+                "`/combat next` - Advance to the next turn\n"
+                "`/combat prev` - Move to the previous turn\n"
+                "`/combat damage` - Apply damage to a participant\n"
+                "`/combat heal` - Heal a participant\n"
+                "`/combat addcondition` - Apply a condition (Poisoned, Stunned, etc.)\n"
+                "`/combat removecondition` - Remove a condition from a participant\n"
+                "`/combat deathsave` - Record a death saving throw (success or failure)\n"
+                "`/combat remove` - Remove a participant from combat\n"
+                "`/combat end` - End the current combat encounter"
+            ),
+            inline=False,
         )
 
-        # Campaign Commands
-        campaign_commands = [
-            "`/campaign save` - Save the current AI session as a named campaign",
-            "`/campaign load` - Restore a saved campaign into this channel",
-            "`/campaign status` - Show the active campaign's scene, NPCs, and events",
-            "`/campaign list` - List all saved campaigns for this server",
-            "`/campaign export` - Download the full session log as a text file",
-            "`/campaign delete` - Delete a saved campaign",
-        ]
+        embed.add_field(
+            name="🎒 Items & Resources",
+            value=(
+                "`/item add` - Add an item to a character's inventory\n"
+                "`/item remove` - Remove an item from inventory\n"
+                "`/item list` - View a character's inventory\n"
+                "`/spellslots view` - View current and max spell slots\n"
+                "`/spellslots set` - Set max slots for a spell level\n"
+                "`/spellslots use` - Expend a spell slot\n"
+                "`/spellslots restore` - Restore all spell slots to maximum\n"
+                "`/spellslots setup` - Auto-populate slots from D&D 5e API by class & level\n"
+                "`/rest short` - Take a short rest and recover HP\n"
+                "`/rest long` - Take a long rest (full HP + all spell slots)\n"
+                "`/gold view` - View a character's gold, silver, and copper\n"
+                "`/gold add` - Add currency to a character\n"
+                "`/gold spend` - Spend currency from a character"
+            ),
+            inline=False,
+        )
+
+        embed.add_field(
+            name="🔍 D&D 5e Lookup",
+            value=(
+                "`/lookup monster` - Look up a monster's stat block (CR, HP, AC, abilities, actions)\n"
+                "`/lookup spell` - Look up a spell (school, range, components, description)\n"
+                "`/lookup item` - Look up a weapon or armor (damage, AC, properties)\n"
+                "`/lookup class` - Look up a class (hit die, saves, proficiencies, spellcasting)\n"
+                "`/lookup race` - Look up a race (speed, size, ability bonuses, traits)"
+            ),
+            inline=False,
+        )
+
         embed.add_field(
             name="📚 Campaign Management",
-            value="\n".join(campaign_commands),
+            value=(
+                "`/campaign save` - Save the current AI session as a named campaign\n"
+                "`/campaign load` - Restore a saved campaign into this channel\n"
+                "`/campaign status` - Show the active campaign's scene, NPCs, and events\n"
+                "`/campaign list` - List all saved campaigns for this server\n"
+                "`/campaign export` - Download the full session log as a text file\n"
+                "`/campaign delete` - Delete a saved campaign"
+            ),
             inline=False,
         )
 
-        # AI Dungeon Master Commands
-        ai_dm_commands = [
-            "`/dm start_campaign` - Initialize AI campaign context in this channel",
-            "`/dm scene` - Generate the next story scene based on player action",
-            "`/dm talk` - Talk to an NPC with AI-driven dialogue",
-            "`/dm delete_campaign` - Wipe the AI campaign data for this channel",
-        ]
         embed.add_field(
             name="🤖 AI Dungeon Master",
-            value="\n".join(ai_dm_commands),
+            value=(
+                "`/dm start_campaign` - Initialize AI campaign context in this channel\n"
+                "`/dm scene` - Generate the next story scene based on player action\n"
+                "`/dm talk` - Talk to an NPC with AI-driven dialogue\n"
+                "`/dm npcs` - List known NPCs and memory notes for this session\n"
+                "`/dm delete_campaign` - Wipe the AI campaign data for this channel"
+            ),
             inline=False,
         )
 
-        # Party Commands
-        party_commands = [
-            "`/party add` - Add one of your characters to the party roster",
-            "`/party remove` - Remove your character from the party",
-            "`/party list` - Show all party members with HP bars",
-            "`/party hp` - Apply healing or damage to the whole party",
-            "`/party xp` - Award XP to every party member",
-            "`/party clear` - Clear the entire party roster",
-        ]
         embed.add_field(
             name="🛡️ Party",
-            value="\n".join(party_commands),
+            value=(
+                "`/party add` - Add one of your characters to the party roster\n"
+                "`/party remove` - Remove your character from the party\n"
+                "`/party list` - Show all party members with HP bars\n"
+                "`/party hp` - Apply healing or damage to the whole party\n"
+                "`/party xp` - Award XP to every party member\n"
+                "`/party clear` - Clear the entire party roster"
+            ),
             inline=False,
         )
 
-        # DM Tools
-        dm_tool_commands = [
-            "`/dmtool secret_roll` - Roll dice privately (only you see the result)",
-            "`/dmtool note` - Save a private DM note to the current session",
-            "`/dmtool notes` - View all your DM notes for this session",
-            "`/dmtool npc` - Generate a quick random NPC",
-            "`/dmtool encounter` - Roll a random encounter difficulty",
-        ]
         embed.add_field(
             name="🎭 DM Tools",
-            value="\n".join(dm_tool_commands),
+            value=(
+                "`/dmtool secret_roll` - Roll dice privately (only you see the result)\n"
+                "`/dmtool note` - Save a private DM note to the current session\n"
+                "`/dmtool notes` - View all your DM notes for this session\n"
+                "`/dmtool npc` - Generate a quick random NPC\n"
+                "`/dmtool encounter` - Roll a random encounter difficulty"
+            ),
             inline=False,
         )
 
-        # General Commands
-        general_commands = [
-            "`/help` - Show this help message",
-            "`/about` - About this bot",
-        ]
         embed.add_field(
             name="ℹ️ General",
-            value="\n".join(general_commands),
+            value=(
+                "`/help` - Show this help message\n"
+                "`/about` - About this bot"
+            ),
             inline=False,
         )
 
@@ -142,27 +162,36 @@ class Help(commands.Cog):
         embed = discord.Embed(
             title="About D&D Bot",
             description="A comprehensive Dungeons & Dragons 5e bot for managing campaigns, characters, and gameplay.",
-            color=discord.Color.green()
+            color=discord.Color.green(),
         )
-        
+
         embed.add_field(
             name="Features",
             value=(
-                "✨ Dice rolling with advantage/disadvantage\n"
-                "📊 Full character sheet management\n"
-                "⚔️ Combat tracking and HP management\n"
-                "🎯 Ability score rolling and modifiers\n"
-                "📈 Experience and leveling system"
+                "🎲 Dice rolling with advantage/disadvantage\n"
+                "📜 Full character sheet management with ability scores and proficiencies\n"
+                "⚔️ Combat tracking with conditions, death saves, and persistent encounters\n"
+                "🎒 Inventory, spell slot, and currency management\n"
+                "🔍 Live D&D 5e reference lookup (monsters, spells, items, classes, races)\n"
+                "📈 XP tracking with automatic level-up notifications\n"
+                "🤖 AI Dungeon Master with multi-provider support (OpenAI, Gemini, Claude)\n"
+                "📚 Campaign save/load with full session history export\n"
+                "🛡️ Party management with shared HP and XP commands\n"
+                "🎭 DM tools for private rolls and NPC generation"
             ),
-            inline=False
+            inline=False,
         )
-        
+
         embed.add_field(
             name="Getting Started",
-            value="Use `/help` to see all commands, or `/createchar` to make your first character!",
-            inline=False
+            value=(
+                "1. Roll stats with `/stats` then create a character\n"
+                "2. Start a campaign with `/dm start_campaign`\n"
+                "3. Use `/help` to explore all commands"
+            ),
+            inline=False,
         )
-        
+
         embed.set_footer(text=f"Connected to {len(self.bot.guilds)} server(s)")
         await interaction.response.send_message(embed=embed, ephemeral=True)
 

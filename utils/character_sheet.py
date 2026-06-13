@@ -93,6 +93,7 @@ class CharacterSheet:
     spells_known: List[str] = field(default_factory=list)
     spells_prepared: List[str] =field(default_factory=list)
     spell_slots: Dict[str, int] = field(default_factory=dict)
+    spell_slots_max: Dict[str, int] = field(default_factory=dict)
     
     def __post_init__(self) -> None:
         self._normalize()
@@ -243,7 +244,7 @@ class CharacterSheet:
             raise ValueError("Item cannot be empty.")
         self.inventory.append(item)
         
-    def remove_item(self, item: str) -> None:
+    def remove_item(self, item: str) -> bool:
         target = item.strip().lower()
         for i, inv_item in enumerate(self.inventory):
             if inv_item.lower() == target:
@@ -261,12 +262,30 @@ class CharacterSheet:
         self.silver = new_sp
         self.copper = new_cp
         
+    def use_spell_slot(self, level: int) -> bool:
+        key = str(level)
+        current = self.spell_slots.get(key, 0)
+        if current <= 0:
+            return False
+        self.spell_slots[key] = current - 1
+        return True
+
+    def restore_spell_slots(self) -> None:
+        self.spell_slots = dict(self.spell_slots_max)
+
+    def set_max_spell_slots(self, level: int, count: int) -> None:
+        if count < 0:
+            raise ValueError("Slot count cannot be negative.")
+        key = str(level)
+        self.spell_slots_max[key] = count
+        self.spell_slots[key] = min(self.spell_slots.get(key, count), count)
+
     def add_xp(self, amount: int) -> None:
         amount = int(amount)
         if amount < 0:
             raise ValueError("XP amount cannot be negative.")
         self.exp += amount
-        
+
     def level_up(self, levels: int = 1) -> None:
         levels = int(levels)
         if levels < 1:
@@ -323,6 +342,7 @@ class CharacterSheet:
             "spells_known": list(self.spells_known),
             "spells_prepared": list(self.spells_prepared),
             "spell_slots": dict(self.spell_slots),
+            "spell_slots_max": dict(self.spell_slots_max),
         }
           
     @classmethod
@@ -374,4 +394,5 @@ class CharacterSheet:
             spells_known=list(data.get("spells_known", [])),
             spells_prepared=list(data.get("spells_prepared", [])),
             spell_slots=dict(data.get("spell_slots", {})),
+            spell_slots_max=dict(data.get("spell_slots_max", {})),
         )

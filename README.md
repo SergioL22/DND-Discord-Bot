@@ -1,84 +1,167 @@
-# Discord DND Bot
+# Discord D&D Bot
 
-A Discord bot designed to support Dungeons & Dragons 5e sessions with campaign management, player character handling, combat utilities, dice rolling, and AI-driven DM storytelling. It helps manage game state, character data, combat flows, and creative scene generation from within Discord.
+A feature-complete Discord bot for running Dungeons & Dragons 5e sessions. Covers character management, combat tracking, inventory and spell slots, live D&D 5e reference lookups, AI-driven Dungeon Master storytelling, campaign save/load, and DM utilities — all through slash commands.
 
-## About
-A Discord bot for D&D 5e with campaign management, character sheets, combat tools, and AI-driven DM features.
+## Features
 
-## Work in progress
-- This project is still under active development.
-- Use the `wip` branch or a draft pull request when uploading to GitHub.
+- **Dice Rolling** — Standard notation (`1d20`, `2d6+3`), advantage/disadvantage, ability score rolling
+- **Character Sheets** — Full D&D 5e character sheets with abilities, proficiencies, HP, AC, spellcasting, inventory, and currency
+- **Combat Tracking** — Initiative order, HP management, D&D 5e conditions (Poisoned, Stunned, etc.), death saving throws, persistent encounters across restarts
+- **Items & Resources** — Inventory management, spell slot tracking (with auto-setup from the API), short/long rests, gold/silver/copper ledger
+- **D&D 5e Lookup** — Live reference data for monsters, spells, items, classes, and races via the [D&D 5e API](https://www.dnd5eapi.co/)
+- **AI Dungeon Master** — Scene generation and NPC dialogue powered by OpenAI with per-channel campaign context
+- **Campaign Management** — Save, load, export, and delete campaign sessions; full history log
+- **Party Management** — Shared HP adjustments, bulk XP awards, party roster with HP bars
+- **DM Tools** — Private dice rolls, session notes, random NPC generation, encounter difficulty rolling
 
 ## Setup
-1. Copy `.env.example` to `.env`.
-2. Fill in your own values.
-3. Install dependencies from `requirements.txt`.
-4. Run `bot.py` after configuring your environment.
 
-## Environment variables
-- `DISCORD_BOT_TOKEN`
-- `COMMAND_PREFIX` (default `!`)
-- `BOT_STATUS`
-- `AI_PROVIDER`
-- `GOOGLE_API_KEY`
-- `GEMINI_MODEL`
-- `OPENAI_API_KEY`
-- `OPENAI_BASE_URL`
-- `AI_MAX_TOKENS_SCENE`
-- `AI_MAX_TOKENS_TALK`
+1. Copy `.env.example` to `.env` and fill in your values.
+2. Install dependencies:
+   ```
+   pip install -r requirements.txt
+   ```
+3. Run the bot:
+   ```
+   python bot.py
+   ```
 
-## Planned improvements
+## Environment Variables
 
-### Core project improvements
-- Add detailed `README.md` with setup, commands, and AI configuration
-- Add `LICENSE` for open-source publishing
-- Pin versions in `requirements.txt` and add missing dependencies like `python-dotenv`, `discord.py`, `google-genai`
-- Add unit tests for bot logic and AI prompt handling
-- Enhance `utils` with shared helpers for JSON I/O, validation, and persistence
+| Variable | Required | Description |
+|---|---|---|
+| `DISCORD_BOT_TOKEN` | Yes | Your Discord bot token |
+| `COMMAND_PREFIX` | No | Prefix for legacy commands (default `!`) |
+| `BOT_STATUS` | No | Bot status message (default `D&D 5e \| !help`) |
+| `OPENAI_API_KEY` | Yes | OpenAI API key |
+| `OPENAI_MODEL` | No | Model name (default `gpt-4o-mini`) |
+| `OPENAI_BASE_URL` | No | Override base URL (default `https://api.openai.com/v1`) |
+| `AI_MAX_TOKENS_SCENE` | No | Max tokens for scene generation (default `2000`) |
+| `AI_MAX_TOKENS_TALK` | No | Max tokens for NPC dialogue (default `1000`) |
 
-### Bot architecture improvements
-- Refactor cogs for better separation: `campaign.py` for state management, `characters.py` for creation/stats, `combat.py` for initiative/HP, `ai_dm.py` for storytelling
-- Standardize on slash commands over prefix commands
-- Improve error handling and user feedback in interactions
-- Replace `print(...)` with proper logging
-- Expand config validation for all required environment values
+## Commands
 
-### Persistence / data improvements
-- Replace ad-hoc JSON storage with a structured data layer (e.g., SQLite wrapper in `utils/database.py`)
-- Add versioned schemas for campaign state
-- Store campaign metadata, player characters, NPCs, scene summaries, and events
-- Add export/import functionality for campaign logs and notes
+### 🎲 Dice Rolling
+| Command | Description |
+|---|---|
+| `/roll <dice>` | Roll dice using standard notation (`1d20`, `2d6+3`) |
+| `/roll_adv <dice>` | Roll with advantage |
+| `/roll_dis <dice>` | Roll with disadvantage |
+| `/stats` | Roll 6 ability scores (4d6 drop lowest) |
+| `/d20` | Quick d20 roll |
 
-### AI integration improvements
-- Implement full `cogs/campaign.py` with commands like `/campaign create`, `/campaign status`, `/campaign summary`, `/campaign save`, `/campaign load`
-- Add channel-specific AI sessions for isolated campaign contexts
-- Optimize memory by summarizing past scenes instead of storing full history
-- Include explicit NPC memory and world facts in session state
-- Add player input prompts: `/dm next_scene`, `/dm npc_dialogue`, `/dm plot_hook`, `/dm describe_location`, `/dm generate_encounter`
-- Introduce AI world builder for generating villages, factions, quests, NPC motivations, and rivalries
-- Add DM control commands: `/dm revise_setting`, `/dm add_twist`, `/dm change_tone`
+### 📜 Character Management
+| Command | Description |
+|---|---|
+| `/createchar` | Create a new character with class/race dropdowns |
+| `/viewchar` | View a full character sheet |
+| `/listchars` | List all your characters |
+| `/deletechar` | Delete a character |
+| `/hp` | Adjust HP (+heal / -damage) |
+| `/levelup` | Level up a character |
+| `/addxp` | Add XP (notifies when ready to level up) |
 
-### AI provider/design improvements
-- Abstract AI providers into a shared interface (OpenAI and Gemini classes with consistent contracts)
-- Switch to async HTTP clients like `aiohttp` or `httpx` for non-blocking requests
-- Implement prompt templates and a prompt manager
-- Add JSON schema validation for AI outputs
-- Include fallbacks for invalid AI responses
-- Add content filtering for campaign text
+### ⚔️ Combat
+| Command | Description |
+|---|---|
+| `/combat start` | Start combat in this channel |
+| `/combat join` | Join with one of your characters |
+| `/combat addnpc` | Add an NPC/monster to initiative |
+| `/combat status` | Show initiative order and current turn |
+| `/combat next` | Advance to the next turn |
+| `/combat prev` | Go back one turn |
+| `/combat damage` | Apply damage to a participant |
+| `/combat heal` | Heal a participant |
+| `/combat addcondition` | Apply a D&D 5e condition |
+| `/combat removecondition` | Remove a condition |
+| `/combat deathsave` | Record a death saving throw |
+| `/combat remove` | Remove a participant |
+| `/combat end` | End the encounter |
 
-### Nice-to-have campaign AI features
-- NPC generation with stats and backstories
-- Quest generation with hooks, objectives, and rewards
-- Encounter balancing based on party level
-- Item and magic item generation
-- Character backstory creation
-- Automatic scene recap summaries
-- "What if" scenario simulations or suggestions
-- Campaign save/resume with state checkpoints
-- Adventure log generation for players
+### 🎒 Items & Resources
+| Command | Description |
+|---|---|
+| `/item add` | Add an item to inventory |
+| `/item remove` | Remove an item from inventory |
+| `/item list` | View a character's inventory |
+| `/spellslots view` | View current and max spell slots |
+| `/spellslots set` | Set max slots for a spell level |
+| `/spellslots use` | Expend a spell slot |
+| `/spellslots restore` | Restore all spell slots |
+| `/spellslots setup` | Auto-populate slots from the D&D 5e API |
+| `/rest short` | Short rest — recover HP |
+| `/rest long` | Long rest — full HP and all spell slots |
+| `/gold view` | View gold, silver, and copper |
+| `/gold add` | Add currency |
+| `/gold spend` | Spend currency |
 
-### UX improvements
-- Add `/help` or auto-generated command help
-- Use embed-based responses for better readability
-- Implement reaction-based or button-driven flows for choices
-- Add persistent party sheet commands like `/party add`, `/party hp`, `/party xp`
+### 🔍 D&D 5e Lookup
+| Command | Description |
+|---|---|
+| `/lookup monster` | Stat block: CR, HP, AC, abilities, actions |
+| `/lookup spell` | School, range, components, description |
+| `/lookup item` | Weapon damage, armor AC, properties |
+| `/lookup class` | Hit die, saves, proficiencies, spellcasting |
+| `/lookup race` | Speed, size, ability bonuses, traits |
+
+### 📚 Campaign Management
+| Command | Description |
+|---|---|
+| `/campaign save` | Save the current AI session as a named campaign |
+| `/campaign load` | Restore a saved campaign |
+| `/campaign status` | Show active campaign scene, NPCs, and events |
+| `/campaign list` | List all saved campaigns for this server |
+| `/campaign export` | Download the full session log as a text file |
+| `/campaign delete` | Delete a saved campaign |
+
+### 🤖 AI Dungeon Master
+| Command | Description |
+|---|---|
+| `/dm start_campaign` | Initialize AI campaign context in this channel |
+| `/dm scene` | Generate the next story scene |
+| `/dm talk` | Talk to an NPC with AI-driven dialogue |
+| `/dm npcs` | List known NPCs and memory notes |
+| `/dm delete_campaign` | Wipe AI campaign data for this channel |
+
+### 🛡️ Party
+| Command | Description |
+|---|---|
+| `/party add` | Add your character to the party roster |
+| `/party remove` | Remove your character from the party |
+| `/party list` | Show all party members with HP bars |
+| `/party hp` | Apply healing or damage to the whole party |
+| `/party xp` | Award XP to every party member |
+| `/party clear` | Clear the entire party roster |
+
+### 🎭 DM Tools
+| Command | Description |
+|---|---|
+| `/dmtool secret_roll` | Roll dice privately |
+| `/dmtool note` | Save a private DM note |
+| `/dmtool notes` | View all DM notes for this session |
+| `/dmtool npc` | Generate a random NPC |
+| `/dmtool encounter` | Roll a random encounter difficulty |
+
+## Project Structure
+
+```
+bot.py                  — Entry point, loads all cogs
+config.py               — Environment variable config
+cogs/
+  character.py          — Character creation and management
+  combat.py             — Combat tracking and initiative
+  resources.py          — Items, spell slots, rests, currency
+  lookup.py             — D&D 5e API reference lookups
+  dice.py               — Dice rolling commands
+  ai_dm.py              — AI Dungeon Master
+  campaign.py           — Campaign save/load
+  party.py              — Party management
+  dm_tools.py           — DM utility commands
+  help.py               — Help and about commands
+utils/
+  character_sheet.py    — CharacterSheet dataclass
+  database.py           — SQLite database interface
+  db.py                 — Low-level DB helpers and schema
+  dice_roller.py        — Dice rolling logic
+  dnd5e_api.py          — Async D&D 5e API client with caching
+```

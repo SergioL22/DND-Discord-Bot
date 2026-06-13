@@ -1,24 +1,16 @@
 import asyncio
 import json
-import os
-import re
 import time
 from typing import Any, Dict, List
 from urllib import error, request
 
 import discord
-import google.genai as genai
 from discord import app_commands
 from discord.ext import commands
 
 from config import Config
 from utils import db
-
-try:
-    import anthropic as _anthropic
-    _ANTHROPIC_AVAILABLE = True
-except ImportError:
-    _ANTHROPIC_AVAILABLE = False
+from utils.database import get_database
 
 
 class AIDM(commands.Cog):
@@ -36,30 +28,11 @@ class AIDM(commands.Cog):
 
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.ai_provider = getattr(Config, "AI_PROVIDER", os.getenv("AI_PROVIDER", "google")).strip().lower()
-        self.google_api_key = getattr(Config, "GOOGLE_API_KEY", os.getenv("GOOGLE_API_KEY", ""))
-        self.gemini_model_name = getattr(Config, "GEMINI_MODEL", os.getenv("GEMINI_MODEL", "gemini-2.0-flash"))
-        self.openai_api_key = getattr(Config, "OPENAI_API_KEY", os.getenv("OPENAI_API_KEY", ""))
-        self.openai_model = getattr(Config, "OPENAI_MODEL", os.getenv("OPENAI_MODEL", "gpt-4o-mini"))
-        self.openai_base_url = getattr(
-            Config,
-            "OPENAI_BASE_URL",
-            os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1"),
-        ).rstrip("/")
-        self.anthropic_api_key = getattr(Config, "ANTHROPIC_API_KEY", os.getenv("ANTHROPIC_API_KEY", ""))
-        self.claude_model = getattr(Config, "CLAUDE_MODEL", os.getenv("CLAUDE_MODEL", "claude-haiku-4-5"))
-        self.ai_max_tokens_scene = self._to_int(
-            getattr(Config, "AI_MAX_TOKENS_SCENE", os.getenv("AI_MAX_TOKENS_SCENE", 2000)),
-            2000,
-        )
-        self.ai_max_tokens_talk = self._to_int(
-            getattr(Config, "AI_MAX_TOKENS_TALK", os.getenv("AI_MAX_TOKENS_TALK", 1000)),
-            1000,
-        )
-        self._client = None
-        self._fallback_models = ["gemini-2.0-flash", "gemini-1.5-flash"]
-        if self.google_api_key:
-            self._client = genai.Client(api_key=self.google_api_key)
+        self.openai_api_key = Config.OPENAI_API_KEY
+        self.openai_model = Config.OPENAI_MODEL
+        self.openai_base_url = Config.OPENAI_BASE_URL.rstrip("/")
+        self.ai_max_tokens_scene = self._to_int(Config.AI_MAX_TOKENS_SCENE, 2000)
+        self.ai_max_tokens_talk = self._to_int(Config.AI_MAX_TOKENS_TALK, 1000)
 
     def _get_or_create_session(self, channel_id: int) -> Dict[str, Any]:
         session = db.session_get(channel_id)
@@ -83,27 +56,9 @@ class AIDM(commands.Cog):
         return db.session_delete(channel_id)
 
     def _ensure_provider(self) -> str:
-        if self.ai_provider == "openai":
-            if not self.openai_api_key:
-                return (
-                    "❌ Missing `OPENAI_API_KEY` in your `.env`. "
-                    "Add it, restart the bot, and try again."
-                )
-            return ""
-
-        if self.ai_provider == "claude":
-            if not _ANTHROPIC_AVAILABLE:
-                return "❌ `anthropic` package not installed. Run: `pip install anthropic`"
-            if not self.anthropic_api_key:
-                return (
-                    "❌ Missing `ANTHROPIC_API_KEY` in your `.env`. "
-                    "Get one at console.anthropic.com, then restart the bot."
-                )
-            return ""
-
-        if not self.google_api_key or self._client is None:
+        if not self.openai_api_key:
             return (
-                "❌ Missing `GOOGLE_API_KEY` in your `.env`. "
+                "❌ Missing `OPENAI_API_KEY` in your `.env`. "
                 "Add it, restart the bot, and try again."
             )
         return ""
@@ -136,70 +91,16 @@ class AIDM(commands.Cog):
         raw = str(err)
         lowered = raw.lower()
 
-        if "insufficient_quota" in lowered or ("quota" in lowered and "openai" in lowered):
+        if "insufficient_quota" in lowered or "quota" in lowered:
             return "❌ OpenAI quota exceeded. Check your billing/usage limits in your OpenAI project."
 
         if "invalid_api_key" in lowered:
             return "❌ Invalid `OPENAI_API_KEY`. Check your `.env`, then restart the bot."
 
-        if "claude authentication" in lowered:
-            return "❌ Invalid `ANTHROPIC_API_KEY`. Check your `.env`, then restart the bot."
-
-        if "claude rate limit" in lowered:
-            return "❌ Claude rate limit hit. Please wait a moment and try again."
-
-        if "claude api error" in lowered:
-            return f"❌ Claude error: {raw}"
-
-        if "resource_exhausted" in lowered or "quota exceeded" in lowered or "429" in lowered:
-            retry_match = re.search(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", raw, flags=re.IGNORECASE)
-            delay_match = re.search(r"retryDelay'?:\s*'?(\d+)s", raw, flags=re.IGNORECASE)
-            retry_msg = ""
-            if retry_match:
-                retry_msg = f" Try again in about {int(float(retry_match.group(1)))} seconds."
-            elif delay_match:
-                retry_msg = f" Try again in about {delay_match.group(1)} seconds."
-
-            return (
-                "❌ Gemini quota exceeded for your project. "
-                "Your key currently has no free-tier capacity (or it is temporarily exhausted)."
-                f"{retry_msg}"
-            )
-
-        if "api key" in lowered and ("invalid" in lowered or "not valid" in lowered):
-            return "❌ Invalid `GOOGLE_API_KEY`. Check your `.env`, then restart the bot."
+        if "429" in lowered or "rate limit" in lowered:
+            return "❌ OpenAI rate limit hit. Please wait a moment and try again."
 
         return f"❌ AI error: {raw}"
-
-    def _call_gemini(self, prompt: str, max_output_tokens: int) -> str:
-        models_to_try = [self.gemini_model_name] + [
-            m for m in self._fallback_models if m != self.gemini_model_name
-        ]
-        last_error = None
-
-        for model_name in models_to_try:
-            try:
-                response = self._client.models.generate_content(
-                    model=model_name,
-                    contents=prompt,
-                    config={
-                        "max_output_tokens": max_output_tokens,
-                    },
-                )
-                text = getattr(response, "text", "") or ""
-                if not text.strip():
-                    raise RuntimeError(f"Gemini returned an empty response for model '{model_name}'.")
-                self.gemini_model_name = model_name
-                return text
-            except Exception as e:
-                last_error = e
-                err = str(e).lower()
-                if "not_found" in err or "not found" in err or "404" in err:
-                    continue
-                raise RuntimeError(f"Gemini request failed using model '{model_name}': {e}") from e
-
-        tried = ", ".join(models_to_try)
-        raise RuntimeError(f"No available Gemini model found. Tried: {tried}. Last error: {last_error}")
 
     def _call_openai(self, system_prompt: str, user_prompt: str, max_tokens: int) -> str:
         payload = {
@@ -236,89 +137,18 @@ class AIDM(commands.Cog):
         except Exception as e:
             raise RuntimeError(f"Invalid OpenAI response: {e}") from e
 
-    def _call_claude(self, system_prompt: str, user_prompt: str, max_tokens: int) -> str:
-        if not _ANTHROPIC_AVAILABLE:
-            raise RuntimeError(
-                "The `anthropic` package is not installed. Run: pip install anthropic"
-            )
-        client = _anthropic.Anthropic(api_key=self.anthropic_api_key)
-        try:
-            response = client.messages.create(
-                model=self.claude_model,
-                max_tokens=max_tokens,
-                system=system_prompt,
-                messages=[{"role": "user", "content": user_prompt}],
-            )
-        except _anthropic.AuthenticationError as e:
-            raise RuntimeError(f"Claude authentication error: {e}") from e
-        except _anthropic.RateLimitError as e:
-            raise RuntimeError(f"Claude rate limit exceeded: {e}") from e
-        except _anthropic.APIStatusError as e:
-            raise RuntimeError(f"Claude API error ({e.status_code}): {e.message}") from e
-        except Exception as e:
-            raise RuntimeError(f"Claude request failed: {e}") from e
-
-        text = next((b.text for b in response.content if b.type == "text"), "")
-        if not text.strip():
-            raise RuntimeError("Claude returned an empty response.")
-        return text
-
-    @staticmethod
-    def _rate_limit_delay(err: str) -> int:
-        """Return retry delay in seconds if this looks like a rate-limit error, else 0."""
-        low = err.lower()
-        is_limit = (
-            "resource_exhausted" in low or "429" in low
-            or "quota exceeded" in low or "claude rate limit" in low
-        )
-        if not is_limit:
-            return 0
-        match = re.search(r"retry in\s+([0-9]+(?:\.[0-9]+)?)s", err, re.IGNORECASE)
-        return int(float(match.group(1))) + 1 if match else 15
-
     async def _generate_json(self, system_prompt: str, user_prompt: str, max_tokens: int) -> Dict[str, Any]:
-        full_prompt = f"{system_prompt}\n\n{user_prompt}"
-        last_err: Exception = RuntimeError("Unknown error")
-        for attempt in range(2):
-            try:
-                if self.ai_provider == "openai":
-                    raw_text = await asyncio.to_thread(
-                        self._call_openai, system_prompt, user_prompt, max_tokens,
-                    )
-                elif self.ai_provider == "claude":
-                    raw_text = await asyncio.to_thread(
-                        self._call_claude, system_prompt, user_prompt, max_tokens,
-                    )
-                else:
-                    raw_text = await asyncio.to_thread(
-                        self._call_gemini, full_prompt, max_tokens,
-                    )
-                break
-            except RuntimeError as e:
-                last_err = e
-                delay = self._rate_limit_delay(str(e))
-                if delay and attempt == 0:
-                    await asyncio.sleep(delay)
-                    continue
-                raise
-            except Exception as e:
-                raise RuntimeError(f"AI request failed: {e}") from e
-        else:
-            raise last_err
-
-        # Strip markdown code fences that Gemini sometimes wraps around JSON
-        text = raw_text.strip()
-        if text.startswith("```"):
-            parts = text.split("```")
-            # parts[1] is the fenced block; strip optional language tag
-            inner = parts[1]
-            lines = inner.split("\n")
-            if lines[0].strip().lower() in ("json", ""):
-                lines = lines[1:]
-            text = "\n".join(lines).strip()
+        try:
+            raw_text = await asyncio.to_thread(
+                self._call_openai, system_prompt, user_prompt, max_tokens,
+            )
+        except RuntimeError:
+            raise
+        except Exception as e:
+            raise RuntimeError(f"AI request failed: {e}") from e
 
         try:
-            return json.loads(text)
+            return json.loads(raw_text.strip())
         except json.JSONDecodeError as e:
             raise RuntimeError(f"Invalid AI JSON response: {e}\nRaw: {raw_text[:500]}") from e
 
@@ -367,7 +197,8 @@ class AIDM(commands.Cog):
             "\"scene_summary\": string,"
             "\"new_npcs\": [string],"
             "\"hooks\": [string],"
-            "\"opening_dialogue\": string"
+            "\"opening_dialogue\": string,"
+            "\"dm_question\": string"
             "}"
         )
 
@@ -382,6 +213,7 @@ class AIDM(commands.Cog):
         new_npcs = [str(n) for n in result.get("new_npcs", []) if str(n).strip()][:10]
         hooks = [str(h) for h in result.get("hooks", []) if str(h).strip()][:5]
         opening_dialogue = str(result.get("opening_dialogue", ""))
+        dm_question = str(result.get("dm_question", "What does your party do?"))
 
         for npc in new_npcs:
             if npc not in session["known_npcs"]:
@@ -396,28 +228,41 @@ class AIDM(commands.Cog):
         session["history"] = self._trim_history(session["history"])
         self._update_session(interaction.channel_id, session)
 
-        narration_chunks = self._chunk_text(opening_narration)
+        narration_chunks = self._chunk_text(opening_narration, 1800)
 
-        embed = discord.Embed(
-            title=f"🎬 {title.strip()} - Opening Scene",
-            description=narration_chunks[0],
-            color=discord.Color.blurple(),
-        )
-        embed.add_field(name="Tone", value=tone.strip()[:1024], inline=True)
-        embed.add_field(name="Premise", value=premise.strip()[:1024], inline=False)
-        if opening_dialogue:
-            embed.add_field(name="First Voice", value=opening_dialogue[:1024], inline=False)
-        if new_npcs:
-            embed.add_field(name="Introduced NPCs", value=", ".join(new_npcs)[:1024], inline=False)
-        if hooks:
-            embed.add_field(name="Adventure Hooks", value="\n".join(f"• {h}" for h in hooks)[:1024], inline=False)
-
+        await interaction.followup.send(content=f"✅ **{title.strip()}** has begun!")
         await interaction.followup.send(
-            content=f"✅ AI campaign initialized for this channel: **{title.strip()}**",
-            embed=embed,
+            content=f"# 🎬 {title.strip()} — Opening Scene\n\n{narration_chunks[0]}"
         )
         for chunk in narration_chunks[1:]:
             await interaction.followup.send(content=chunk)
+
+        if opening_dialogue:
+            await interaction.followup.send(content=f"> 💬 *{opening_dialogue}*")
+
+        details_embed = discord.Embed(title="📋 Campaign Details", color=discord.Color.blurple())
+        details_embed.add_field(name="📖 Premise", value=premise.strip()[:1024], inline=False)
+        if new_npcs:
+            details_embed.add_field(
+                name="👥 Introduced NPCs",
+                value="\n".join(f"• {n}" for n in new_npcs)[:1024],
+                inline=False,
+            )
+        if hooks:
+            details_embed.add_field(
+                name="🪝 Adventure Hooks",
+                value="\n".join(f"• {h}" for h in hooks)[:1024],
+                inline=False,
+            )
+        details_embed.set_footer(text=f"Tone: {tone.strip()}")
+        await interaction.followup.send(embed=details_embed)
+
+        question_embed = discord.Embed(
+            description=f"## ❓ {dm_question}",
+            color=discord.Color.gold(),
+        )
+        question_embed.set_footer(text="Use /dm scene <your action> to respond")
+        await interaction.followup.send(embed=question_embed)
 
     @dm_group.command(name="delete_campaign", description="Delete AI DM campaign data for this channel")
     @app_commands.describe(confirm="Set to true to confirm deletion")
@@ -467,6 +312,22 @@ class AIDM(commands.Cog):
         session = self._get_or_create_session(interaction.channel_id)
         campaign = session.get("campaign", {})
 
+        party_context = ""
+        if interaction.guild_id:
+            char_db = get_database()
+            members = db.party_list(interaction.guild_id)
+            if members:
+                party_lines = []
+                for m in members:
+                    char = char_db.get_character(m["owner_id"], m["name_key"])
+                    if char:
+                        party_lines.append(
+                            f"  - {char.name} (Lv{char.level} {char.race} {char.character_class},"
+                            f" HP {char.current_hp}/{char.max_hp})"
+                        )
+                if party_lines:
+                    party_context = "Current party:\n" + "\n".join(party_lines) + "\n"
+
         system_prompt = (
             "You are a D&D 5e Dungeon Master assistant. "
             "Respond with STRICT JSON only. No markdown, no prose outside JSON."
@@ -478,6 +339,7 @@ class AIDM(commands.Cog):
             f"Current scene summary: {session.get('scene_summary', '')}\n"
             f"Recent events: {session.get('recent_events', [])}\n"
             f"Known NPCs: {session.get('known_npcs', [])}\n"
+            f"{party_context}"
             f"Player action: {player_action}\n\n"
             "Return JSON with this exact schema:\n"
             "{"
@@ -485,7 +347,8 @@ class AIDM(commands.Cog):
             "\"scene_summary\": string,"
             "\"new_npcs\": [string],"
             "\"hooks\": [string],"
-            "\"combat_hint\": string"
+            "\"combat_hint\": string,"
+            "\"dm_question\": string"
             "}"
         )
 
@@ -500,8 +363,8 @@ class AIDM(commands.Cog):
         new_npcs = [str(n) for n in result.get("new_npcs", [])][:10]
         hooks = [str(h) for h in result.get("hooks", [])][:5]
         combat_hint = str(result.get("combat_hint", ""))
+        dm_question = str(result.get("dm_question", "What does your party do next?"))
 
-        # Update channel memory so future responses stay coherent.
         for npc in new_npcs:
             if npc and npc not in session["known_npcs"]:
                 session["known_npcs"].append(npc)
@@ -513,23 +376,38 @@ class AIDM(commands.Cog):
         session["history"] = self._trim_history(session["history"])
         self._update_session(interaction.channel_id, session)
 
-        narration_chunks = self._chunk_text(narration)
+        narration_chunks = self._chunk_text(narration, 1800)
 
-        embed = discord.Embed(
-            title="📖 Scene Update",
-            description=narration_chunks[0],
-            color=discord.Color.blurple(),
+        await interaction.followup.send(
+            content=f"## 📖 Scene Update\n\n{narration_chunks[0]}"
         )
-        if new_npcs:
-            embed.add_field(name="New NPCs", value=", ".join(new_npcs), inline=False)
-        if hooks:
-            embed.add_field(name="Story Hooks", value="\n".join(f"• {h}" for h in hooks), inline=False)
-        if combat_hint:
-            embed.add_field(name="Combat Tension", value=combat_hint[:1024], inline=False)
-
-        await interaction.followup.send(embed=embed)
         for chunk in narration_chunks[1:]:
             await interaction.followup.send(content=chunk)
+
+        if new_npcs or hooks or combat_hint:
+            details_embed = discord.Embed(color=discord.Color.blurple())
+            if new_npcs:
+                details_embed.add_field(
+                    name="👥 New NPCs",
+                    value=", ".join(new_npcs)[:1024],
+                    inline=False,
+                )
+            if hooks:
+                details_embed.add_field(
+                    name="🪝 Story Hooks",
+                    value="\n".join(f"• {h}" for h in hooks)[:1024],
+                    inline=False,
+                )
+            if combat_hint:
+                details_embed.add_field(name="⚔️ Combat Tension", value=combat_hint[:1024], inline=False)
+            await interaction.followup.send(embed=details_embed)
+
+        question_embed = discord.Embed(
+            description=f"## ❓ {dm_question}",
+            color=discord.Color.gold(),
+        )
+        question_embed.set_footer(text="Use /dm scene <your action> to respond")
+        await interaction.followup.send(embed=question_embed)
 
     @dm_group.command(name="talk", description="Talk to an NPC with AI-driven dialogue")
     @app_commands.describe(npc_name="NPC you are speaking to", message="What your character says")
@@ -616,6 +494,38 @@ class AIDM(commands.Cog):
         await interaction.followup.send(embed=embed)
         for chunk in dialogue_chunks[1:]:
             await interaction.followup.send(content=chunk)
+
+    @dm_group.command(name="npcs", description="List known NPCs and memory notes for this session")
+    async def list_npcs(self, interaction: discord.Interaction):
+        if interaction.channel_id is None:
+            await interaction.response.send_message(
+                "❌ This command must be used in a server channel.", ephemeral=True
+            )
+            return
+
+        session = self._get_or_create_session(interaction.channel_id)
+        known_npcs = session.get("known_npcs", [])
+        npc_memories = session.get("npc_memories", {})
+
+        if not known_npcs:
+            await interaction.response.send_message(
+                "ℹ️ No NPCs have been encountered yet in this session.", ephemeral=True
+            )
+            return
+
+        embed = discord.Embed(
+            title="👥 Known NPCs",
+            color=discord.Color.teal(),
+        )
+        for npc in known_npcs:
+            memory = npc_memories.get(npc, "")
+            embed.add_field(
+                name=npc,
+                value=memory[:512] if memory else "*(no notes yet)*",
+                inline=False,
+            )
+        embed.set_footer(text=f"{len(known_npcs)} NPC(s) known • Use /dm talk to interact")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 async def setup(bot: commands.Bot):

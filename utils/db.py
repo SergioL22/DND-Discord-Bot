@@ -54,6 +54,11 @@ def _init_tables(conn: sqlite3.Connection) -> None:
             name_key   TEXT NOT NULL,
             PRIMARY KEY (guild_id, owner_id, name_key)
         );
+        CREATE TABLE IF NOT EXISTS combat_encounters (
+            channel_id TEXT PRIMARY KEY,
+            data       TEXT NOT NULL,
+            updated_at INTEGER NOT NULL
+        );
     """)
     conn.commit()
     _migrate_json(conn)
@@ -282,3 +287,34 @@ def party_clear(guild_id: int) -> int:
         cursor = conn.execute("DELETE FROM party_members WHERE guild_id = ?", (str(guild_id),))
         conn.commit()
     return cursor.rowcount
+
+
+# ── Combat Encounters ────────────────────────────────────────────────────────
+
+def encounter_save(channel_id: int, data: Dict[str, Any]) -> None:
+    now = int(time.time())
+    with _lock:
+        conn = get_connection()
+        conn.execute(
+            "INSERT OR REPLACE INTO combat_encounters (channel_id, data, updated_at) VALUES (?, ?, ?)",
+            (str(channel_id), json.dumps(data), now),
+        )
+        conn.commit()
+
+
+def encounter_get(channel_id: int) -> Optional[Dict[str, Any]]:
+    row = get_connection().execute(
+        "SELECT data FROM combat_encounters WHERE channel_id = ?",
+        (str(channel_id),),
+    ).fetchone()
+    return json.loads(row["data"]) if row else None
+
+
+def encounter_delete(channel_id: int) -> bool:
+    with _lock:
+        conn = get_connection()
+        cursor = conn.execute(
+            "DELETE FROM combat_encounters WHERE channel_id = ?", (str(channel_id),)
+        )
+        conn.commit()
+    return cursor.rowcount > 0
