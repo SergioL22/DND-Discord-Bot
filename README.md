@@ -9,7 +9,7 @@ A feature-complete Discord bot for running Dungeons & Dragons 5e sessions. Cover
 - **Combat Tracking** — Initiative order, HP management, D&D 5e conditions (Poisoned, Stunned, etc.), death saving throws, persistent encounters across restarts
 - **Items & Resources** — Inventory management, spell slot tracking (with auto-setup from the API), short/long rests, gold/silver/copper ledger
 - **D&D 5e Lookup** — Live reference data for monsters, spells, items, classes, and races via the [D&D 5e API](https://www.dnd5eapi.co/)
-- **AI Dungeon Master** — Scene generation and NPC dialogue powered by OpenAI with per-channel campaign context
+- **AI Dungeon Master** — Scene generation, NPC dialogue, and AI-generated combat encounters powered by OpenAI with per-channel campaign context and party-aware narration
 - **Campaign Management** — Save, load, export, and delete campaign sessions; full history log
 - **Party Management** — Shared HP adjustments, bulk XP awards, party roster with HP bars
 - **DM Tools** — Private dice rolls, session notes, random NPC generation, encounter difficulty rolling
@@ -118,7 +118,8 @@ A feature-complete Discord bot for running Dungeons & Dragons 5e sessions. Cover
 | Command | Description |
 |---|---|
 | `/dm start_campaign` | Initialize AI campaign context in this channel |
-| `/dm scene` | Generate the next story scene |
+| `/dm scene` | Generate the next story scene based on a player action |
+| `/dm encounter` | Generate a combat encounter and auto-populate the combat tracker with AI-created monsters |
 | `/dm talk` | Talk to an NPC with AI-driven dialogue |
 | `/dm npcs` | List known NPCs and memory notes |
 | `/dm delete_campaign` | Wipe AI campaign data for this channel |

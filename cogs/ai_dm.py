@@ -1,7 +1,8 @@
 import asyncio
 import json
+import random
 import time
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib import error, request
 
 import discord
@@ -264,6 +265,33 @@ class AIDM(commands.Cog):
         question_embed.set_footer(text="Use /dm scene <your action> to respond")
         await interaction.followup.send(embed=question_embed)
 
+        if interaction.guild_id:
+            party_members = db.party_list(interaction.guild_id)
+            if not party_members:
+                checklist_embed = discord.Embed(
+                    title="📋 Session Zero — Before You Begin",
+                    description=(
+                        "No characters are registered for this campaign yet. "
+                        "The AI DM uses your character's name, class, race, and HP to personalise "
+                        "the story and scale encounters. Each player should complete these two steps:"
+                    ),
+                    color=discord.Color.orange(),
+                )
+                checklist_embed.add_field(
+                    name="Step 1 — Create your character",
+                    value="```/createchar```",
+                    inline=False,
+                )
+                checklist_embed.add_field(
+                    name="Step 2 — Join the party",
+                    value="```/party add <your character name>```",
+                    inline=False,
+                )
+                checklist_embed.set_footer(
+                    text="You can still play without characters, but the AI will have no party context."
+                )
+                await interaction.followup.send(embed=checklist_embed)
+
     @dm_group.command(name="delete_campaign", description="Delete AI DM campaign data for this channel")
     @app_commands.describe(confirm="Set to true to confirm deletion")
     async def delete_campaign(self, interaction: discord.Interaction, confirm: bool):
@@ -494,6 +522,196 @@ class AIDM(commands.Cog):
         await interaction.followup.send(embed=embed)
         for chunk in dialogue_chunks[1:]:
             await interaction.followup.send(content=chunk)
+
+    @dm_group.command(name="encounter", description="Generate a combat encounter and start initiative tracking")
+    @app_commands.describe(
+        description="What kind of encounter? e.g. 'bandits ambush the party at a crossroads'",
+        difficulty="How tough the encounter should be",
+    )
+    @app_commands.choices(difficulty=[
+        app_commands.Choice(name="Easy", value="easy"),
+        app_commands.Choice(name="Medium", value="medium"),
+        app_commands.Choice(name="Hard", value="hard"),
+        app_commands.Choice(name="Deadly", value="deadly"),
+    ])
+    async def generate_encounter(
+        self,
+        interaction: discord.Interaction,
+        description: str,
+        difficulty: Optional[str] = "medium",
+    ):
+        if interaction.channel_id is None:
+            await interaction.response.send_message(
+                "❌ This command must be used in a server channel.", ephemeral=True
+            )
+            return
+
+        key_error = self._ensure_provider()
+        if key_error:
+            await interaction.response.send_message(key_error, ephemeral=True)
+            return
+
+        existing = db.encounter_get(interaction.channel_id)
+        if existing and existing.get("participants"):
+            await interaction.response.send_message(
+                "⚔️ There is already an active combat encounter in this channel. "
+                "Use `/combat end` first, then try again.",
+                ephemeral=True,
+            )
+            return
+
+        await interaction.response.defer()
+
+        session = self._get_or_create_session(interaction.channel_id)
+        campaign = session.get("campaign", {})
+
+        party_context = ""
+        if interaction.guild_id:
+            char_db = get_database()
+            members = db.party_list(interaction.guild_id)
+            if members:
+                party_lines = []
+                for m in members:
+                    char = char_db.get_character(m["owner_id"], m["name_key"])
+                    if char:
+                        party_lines.append(
+                            f"  - {char.name} (Lv{char.level} {char.race} {char.character_class},"
+                            f" HP {char.current_hp}/{char.max_hp})"
+                        )
+                if party_lines:
+                    party_context = "Party:\n" + "\n".join(party_lines) + "\n"
+
+        difficulty = difficulty or "medium"
+        system_prompt = (
+            "You are a D&D 5e Dungeon Master. "
+            "Respond with STRICT JSON only. No markdown, no prose outside JSON."
+        )
+        user_prompt = (
+            f"Campaign: {campaign.get('title', 'Unknown')}\n"
+            f"Tone: {campaign.get('tone', 'heroic')}\n"
+            f"Current scene: {session.get('scene_summary', '')}\n"
+            f"{party_context}"
+            f"Encounter difficulty: {difficulty}\n"
+            f"Encounter description: {description}\n\n"
+            "Generate a combat encounter. Use real D&D 5e monsters with accurate HP and initiative modifiers.\n"
+            "Difficulty guidelines:\n"
+            "  easy: 1-2 weak monsters (CR 1/4 to 1/2)\n"
+            "  medium: 2-4 moderate monsters\n"
+            "  hard: 3-5 strong monsters\n"
+            "  deadly: 4-6+ powerful monsters or one boss\n"
+            "If multiple of the same monster appear, suffix names with A, B, C (e.g. 'Bandit A').\n\n"
+            "Return JSON with this EXACT schema:\n"
+            "{"
+            '"encounter_narration": "2-3 sentence dramatic description of the encounter starting",'
+            '"scene_summary": "updated scene summary reflecting combat has begun",'
+            '"monsters": ['
+            '  {"name": "string", "hp": integer, "initiative_mod": integer}'
+            "],"
+            '"dm_tip": "one short tactical note about this encounter"'
+            "}"
+        )
+
+        try:
+            result = await self._generate_json(system_prompt, user_prompt, 1200)
+        except RuntimeError as e:
+            await interaction.followup.send(self._format_ai_error(e), ephemeral=True)
+            return
+
+        encounter_narration = str(result.get("encounter_narration", "Combat begins!"))
+        scene_summary = str(result.get("scene_summary", session.get("scene_summary", "")))
+        monsters_raw = result.get("monsters", [])
+        dm_tip = str(result.get("dm_tip", ""))
+
+        if not monsters_raw or not isinstance(monsters_raw, list):
+            await interaction.followup.send(
+                "❌ AI did not generate any monsters. Try rephrasing the encounter description.",
+                ephemeral=True,
+            )
+            return
+
+        participants = []
+        for m in monsters_raw[:12]:
+            name = str(m.get("name", "Unknown")).strip()
+            if not name:
+                continue
+            try:
+                hp = max(1, int(m.get("hp", 5)))
+            except (TypeError, ValueError):
+                hp = 5
+            try:
+                initiative_mod = max(-5, min(10, int(m.get("initiative_mod", 0))))
+            except (TypeError, ValueError):
+                initiative_mod = 0
+            roll = random.randint(1, 20)
+            participants.append({
+                "owner_id": "",
+                "character_name": name,
+                "initiative": roll + initiative_mod,
+                "initiative_mod": initiative_mod,
+                "is_npc": True,
+                "npc_hp": hp,
+                "npc_max_hp": hp,
+                "conditions": [],
+                "death_saves_successes": 0,
+                "death_saves_failures": 0,
+                "_roll": roll,
+            })
+
+        if not participants:
+            await interaction.followup.send(
+                "❌ No valid monsters were generated. Try rephrasing the encounter description.",
+                ephemeral=True,
+            )
+            return
+
+        participants.sort(key=lambda p: (-p["initiative"], -p["initiative_mod"], p["character_name"].lower()))
+
+        encounter_data = {
+            "participants": [{k: v for k, v in p.items() if k != "_roll"} for p in participants],
+            "current_index": 0,
+            "round_number": 1,
+        }
+        db.encounter_save(interaction.channel_id, encounter_data)
+
+        combat_cog = self.bot.cogs.get("Combat")
+        if combat_cog is not None and hasattr(combat_cog, "active_encounters"):
+            try:
+                from cogs.combat import EncounterState
+                combat_cog.active_encounters[interaction.channel_id] = EncounterState.from_dict(encounter_data)
+            except Exception:
+                pass
+
+        session["scene_summary"] = scene_summary
+        session["recent_events"].append(f"Combat started: {description}")
+        session["recent_events"] = session["recent_events"][-12:]
+        session["history"].append({"role": "dm", "content": encounter_narration})
+        session["history"] = self._trim_history(session["history"])
+        self._update_session(interaction.channel_id, session)
+
+        narration_chunks = self._chunk_text(encounter_narration, 1800)
+        await interaction.followup.send(content=f"## ⚔️ Encounter!\n\n{narration_chunks[0]}")
+        for chunk in narration_chunks[1:]:
+            await interaction.followup.send(content=chunk)
+
+        roster_embed = discord.Embed(title="👹 Enemies", color=discord.Color.red())
+        for p in participants:
+            roll = p["initiative"] - p["initiative_mod"]
+            mod_str = f"{p['initiative_mod']:+d}" if p["initiative_mod"] != 0 else "±0"
+            roster_embed.add_field(
+                name=p["character_name"],
+                value=f"HP: **{p['npc_hp']}** | Init: **{p['initiative']}** (d20={roll} {mod_str})",
+                inline=True,
+            )
+        if dm_tip:
+            roster_embed.set_footer(text=f"DM Tip: {dm_tip}")
+        await interaction.followup.send(embed=roster_embed)
+
+        await interaction.followup.send(
+            content=(
+                "Combat tracker is live. Use `/combat join` to roll your initiative and enter the fight.\n"
+                "Use `/combat status` to see the full initiative order."
+            )
+        )
 
     @dm_group.command(name="npcs", description="List known NPCs and memory notes for this session")
     async def list_npcs(self, interaction: discord.Interaction):
