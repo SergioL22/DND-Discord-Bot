@@ -1,12 +1,15 @@
 # Discord D&D Bot
 
-A feature-complete Discord bot for running Dungeons & Dragons 5e sessions. Covers character management, combat tracking, inventory and spell slots, live D&D 5e reference lookups, AI-driven Dungeon Master storytelling, campaign save/load, and DM utilities — all through slash commands.
+A feature-complete Discord bot for running Dungeons & Dragons 5e sessions. Covers character management, combat tracking, inventory and spell slots, skill checks and saving throws, spell tracking with live API lookup, inspiration, live D&D 5e reference lookups, AI-driven Dungeon Master storytelling, campaign save/load, and DM utilities — all through slash commands.
 
 ## Features
 
 - **Dice Rolling** — Standard notation (`1d20`, `2d6+3`), advantage/disadvantage, ability score rolling
 - **Character Sheets** — Full D&D 5e character sheets with abilities, proficiencies, HP, AC, spellcasting, inventory, and currency
-- **Combat Tracking** — Initiative order, HP management, D&D 5e conditions (Poisoned, Stunned, etc.), death saving throws, persistent encounters across restarts
+- **Skill Checks & Saving Throws** — Roll any skill check or saving throw with auto-calculated proficiency bonus and optional DC pass/fail
+- **Spell Tracking** — Learn, prepare, and cast spells; auto-expends slots, supports upcasting, and pulls full spell details from the D&D 5e API
+- **Inspiration** — Award and spend D&D inspiration; spending it announces advantage to the table
+- **Combat Tracking** — Initiative order, HP management, D&D 5e conditions with mechanical reminders on apply and on each turn, death saving throws, persistent encounters across restarts
 - **Items & Resources** — Inventory management, spell slot tracking (with auto-setup from the API), short/long rests, gold/silver/copper ledger
 - **D&D 5e Lookup** — Live reference data for monsters, spells, items, classes, and races via the [D&D 5e API](https://www.dnd5eapi.co/)
 - **AI Dungeon Master** — Scene generation, NPC dialogue, and AI-generated combat encounters powered by OpenAI with per-channel campaign context and party-aware narration
@@ -16,7 +19,7 @@ A feature-complete Discord bot for running Dungeons & Dragons 5e sessions. Cover
 
 ## Setup
 
-1. Copy `.env.example` to `.env` and fill in your values.
+1. Copy `.env.example` to `.env` and fill in `DISCORD_BOT_TOKEN` and `OPENAI_API_KEY` (both required — the bot validates them at startup and exits with a clear message if either is missing).
 2. Install dependencies:
    ```
    pip install -r requirements.txt
@@ -47,19 +50,44 @@ A feature-complete Discord bot for running Dungeons & Dragons 5e sessions. Cover
 | `/roll <dice>` | Roll dice using standard notation (`1d20`, `2d6+3`) |
 | `/roll_adv <dice>` | Roll with advantage |
 | `/roll_dis <dice>` | Roll with disadvantage |
-| `/stats` | Roll 6 ability scores (4d6 drop lowest) |
 | `/d20` | Quick d20 roll |
 
 ### 📜 Character Management
 | Command | Description |
 |---|---|
-| `/createchar` | Create a new character with class/race dropdowns |
+| `/stats` | Roll ability scores (4d6 drop lowest) — click the button to open guided character creation |
 | `/viewchar` | View a full character sheet |
 | `/listchars` | List all your characters |
 | `/deletechar` | Delete a character |
 | `/hp` | Adjust HP (+heal / -damage) |
 | `/levelup` | Level up a character |
 | `/addxp` | Add XP (notifies when ready to level up) |
+
+### 🎯 Skill Checks & Saving Throws
+| Command | Description |
+|---|---|
+| `/check skill` | Roll a skill check with proficiency bonus auto-applied |
+| `/check save` | Roll a saving throw with proficiency bonus auto-applied |
+| `/check ability` | Roll a raw ability check (no skill proficiency) |
+
+All three commands accept an optional `dc` argument — if set, the result shows ✅ Pass or ❌ Fail.
+
+### 📖 Spells
+| Command | Description |
+|---|---|
+| `/spell add` | Add a spell to your character's spells known (autocompletes from the D&D 5e API) |
+| `/spell remove` | Remove a spell from spells known |
+| `/spell prepare` | Mark a known spell as prepared |
+| `/spell unprepare` | Remove a spell from your prepared list |
+| `/spell list` | View all spells known (✨ = prepared, 📖 = known only) |
+| `/spell cast` | Cast a spell — shows full API details and auto-expends a spell slot; supports upcasting via `slot_level` |
+
+### ⭐ Inspiration
+| Command | Description |
+|---|---|
+| `/inspiration give` | Award inspiration to a character (DM use) |
+| `/inspiration use` | Spend inspiration to declare advantage on your next roll |
+| `/inspiration status` | Check whether a character currently has inspiration |
 
 ### ⚔️ Combat
 | Command | Description |
@@ -68,11 +96,11 @@ A feature-complete Discord bot for running Dungeons & Dragons 5e sessions. Cover
 | `/combat join` | Join with one of your characters |
 | `/combat addnpc` | Add an NPC/monster to initiative |
 | `/combat status` | Show initiative order and current turn |
-| `/combat next` | Advance to the next turn |
+| `/combat next` | Advance to the next turn (shows mechanical reminders for any active conditions) |
 | `/combat prev` | Go back one turn |
 | `/combat damage` | Apply damage to a participant |
 | `/combat heal` | Heal a participant |
-| `/combat addcondition` | Apply a D&D 5e condition |
+| `/combat addcondition` | Apply a D&D 5e condition (shows its mechanical effects) |
 | `/combat removecondition` | Remove a condition |
 | `/combat deathsave` | Record a death saving throw |
 | `/combat remove` | Remove a participant |
@@ -151,6 +179,9 @@ config.py               — Environment variable config
 cogs/
   character.py          — Character creation and management
   combat.py             — Combat tracking and initiative
+  checks.py             — Skill checks and saving throws
+  spells.py             — Spell management and casting
+  inspiration.py        — Inspiration tracking
   resources.py          — Items, spell slots, rests, currency
   lookup.py             — D&D 5e API reference lookups
   dice.py               — Dice rolling commands
@@ -161,8 +192,8 @@ cogs/
   help.py               — Help and about commands
 utils/
   character_sheet.py    — CharacterSheet dataclass
-  database.py           — SQLite database interface
-  db.py                 — Low-level DB helpers and schema
+  database.py           — Character persistence (high-level API)
+  schema.py             — SQLite connection, table schema, and all low-level DB helpers
   dice_roller.py        — Dice rolling logic
   dnd5e_api.py          — Async D&D 5e API client with caching
 ```

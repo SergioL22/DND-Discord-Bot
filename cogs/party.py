@@ -4,7 +4,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils import db
+from utils import schema as db
 from utils.character_sheet import CharacterSheet
 from utils.database import get_database
 
@@ -87,7 +87,7 @@ class Party(commands.Cog):
             value = (
                 f"Lv {char.level} {char.race} {char.character_class}\n"
                 f"HP: {char.current_hp}/{char.max_hp} {hp_bar}\n"
-                f"AC: {char.armor_class} | <@{m['owner_id']}>"
+                f"AC: {char.effective_ac()} | <@{m['owner_id']}>"
             )
             embed.add_field(name=char.name, value=value, inline=True)
             total_members += 1

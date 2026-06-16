@@ -3,6 +3,7 @@ import os
 import sys
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 from config import Config
@@ -56,12 +57,28 @@ class DNDBot(commands.Bot):
                     await self.load_extension(cog_name)
                     logger.info("Loaded cog: %s", cog_name)
                 except Exception as e:
-                    logger.error("Failed to load cog %s: %s", cog_name, e)
+                    logger.error("Failed to load cog %s: %s", cog_name, e, exc_info=True)
 
     async def on_ready(self):
         logger.info("Bot is ready! Logged in as %s, connected to %d server(s).", self.user.name, len(self.guilds))
 
         await self.change_presence(activity=discord.Game(name=Config.BOT_STATUS))
+
+    async def on_app_command_error(self, interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            await interaction.response.send_message(
+                f"⏳ This command is on cooldown. Try again in **{error.retry_after:.0f}s**.",
+                ephemeral=True,
+            )
+        else:
+            logger.error("Slash command error: %s", error, exc_info=True)
+            try:
+                if not interaction.response.is_done():
+                    await interaction.response.send_message("❌ An unexpected error occurred.", ephemeral=True)
+                else:
+                    await interaction.followup.send("❌ An unexpected error occurred.", ephemeral=True)
+            except Exception:
+                pass
 
     async def on_command_error(self, ctx, error):
         if isinstance(error, commands.CommandNotFound):

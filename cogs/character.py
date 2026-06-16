@@ -8,36 +8,21 @@ from utils.character_sheet import CharacterSheet
 from utils.database import get_database
 
 
+RACE_SPEEDS = {
+    "Dragonborn": 30,
+    "Dwarf": 25,
+    "Elf": 30,
+    "Gnome": 25,
+    "Half-Elf": 30,
+    "Half-Orc": 30,
+    "Halfling": 25,
+    "Human": 30,
+    "Tiefling": 30,
+}
+
 XP_THRESHOLDS = [
     0, 300, 900, 2700, 6500, 14000, 23000, 34000, 48000, 64000,
     85000, 100000, 120000, 140000, 165000, 195000, 225000, 265000, 305000, 355000,
-]
-
-CLASS_CHOICES = [
-    app_commands.Choice(name="Barbarian", value="Barbarian"),
-    app_commands.Choice(name="Bard", value="Bard"),
-    app_commands.Choice(name="Cleric", value="Cleric"),
-    app_commands.Choice(name="Druid", value="Druid"),
-    app_commands.Choice(name="Fighter", value="Fighter"),
-    app_commands.Choice(name="Monk", value="Monk"),
-    app_commands.Choice(name="Paladin", value="Paladin"),
-    app_commands.Choice(name="Ranger", value="Ranger"),
-    app_commands.Choice(name="Rogue", value="Rogue"),
-    app_commands.Choice(name="Sorcerer", value="Sorcerer"),
-    app_commands.Choice(name="Warlock", value="Warlock"),
-    app_commands.Choice(name="Wizard", value="Wizard"),
-]
-
-RACE_CHOICES = [
-    app_commands.Choice(name="Dragonborn", value="Dragonborn"),
-    app_commands.Choice(name="Dwarf", value="Dwarf"),
-    app_commands.Choice(name="Elf", value="Elf"),
-    app_commands.Choice(name="Gnome", value="Gnome"),
-    app_commands.Choice(name="Half-Elf", value="Half-Elf"),
-    app_commands.Choice(name="Half-Orc", value="Half-Orc"),
-    app_commands.Choice(name="Halfling", value="Halfling"),
-    app_commands.Choice(name="Human", value="Human"),
-    app_commands.Choice(name="Tiefling", value="Tiefling"),
 ]
 
 
@@ -51,7 +36,7 @@ def _build_character_embed(character: "CharacterSheet") -> discord.Embed:
     embed.add_field(name="Race", value=character.race, inline=True)
     embed.add_field(name="Level", value=str(character.level), inline=True)
     embed.add_field(name="HP", value=f"{character.current_hp}/{character.max_hp}", inline=True)
-    embed.add_field(name="AC", value=str(character.armor_class), inline=True)
+    embed.add_field(name="AC", value=str(character.effective_ac()), inline=True)
     embed.add_field(name="Speed", value=f"{character.speed} ft", inline=True)
     ability_text = "\n".join(
         f"**{a.title()}**: {s} ({'+' if CharacterSheet.ability_modifier(s) >= 0 else ''}{CharacterSheet.ability_modifier(s)})"
@@ -111,77 +96,6 @@ class Character(commands.Cog):
             view=view,
             ephemeral=True
         )
-
-    @app_commands.command(name="createchar", description="Create a new character")
-    @app_commands.describe(
-        name="Character name",
-        character_class="Choose a class",
-        race="Choose a race",
-        strength="Strength score (default 10)",
-        dexterity="Dexterity score (default 10)",
-        constitution="Constitution score (default 10)",
-        intelligence="Intelligence score (default 10)",
-        wisdom="Wisdom score (default 10)",
-        charisma="Charisma score (default 10)",
-    )
-    @app_commands.choices(character_class=CLASS_CHOICES, race=RACE_CHOICES)
-    async def create_character(
-        self,
-        interaction: discord.Interaction,
-        name: str,
-        character_class: app_commands.Choice[str],
-        race: app_commands.Choice[str],
-        strength: Optional[int] = 10,
-        dexterity: Optional[int] = 10,
-        constitution: Optional[int] = 10,
-        intelligence: Optional[int] = 10,
-        wisdom: Optional[int] = 10,
-        charisma: Optional[int] = 10,
-    ):
-        owner_id = str(interaction.user.id)
-
-        if self.db.character_exists(owner_id, name):
-            await interaction.response.send_message(
-                f"❌ You already have a character named **{name}**.",
-                ephemeral=True,
-            )
-            return
-
-        stat_values = [strength, dexterity, constitution, intelligence, wisdom, charisma]
-        if not all(isinstance(v, int) and 1 <= v <= 20 for v in stat_values):
-            await interaction.response.send_message(
-                "❌ Ability scores must be integers between 1 and 20.",
-                ephemeral=True,
-            )
-            return
-
-        abilities = {
-            "strength": strength,
-            "dexterity": dexterity,
-            "constitution": constitution,
-            "intelligence": intelligence,
-            "wisdom": wisdom,
-            "charisma": charisma,
-        }
-
-        try:
-            con_mod = CharacterSheet.ability_modifier(abilities["constitution"])
-            starting_hp = max(1, 10 + con_mod)
-
-            character = CharacterSheet(
-                owner_id=owner_id,
-                name=name,
-                character_class=character_class.value,
-                race=race.value,
-                abilities=abilities,
-                max_hp=starting_hp,
-                current_hp=starting_hp,
-            )
-            self.db.save_character(character)
-
-            await interaction.response.send_message(embed=_build_character_embed(character))
-        except ValueError as e:
-            await interaction.response.send_message(f"❌ Error creating character: {e}", ephemeral=True)
 
     @app_commands.command(name="viewchar", description="View one of your characters")
     @app_commands.describe(character_name="Character to view")
@@ -263,7 +177,7 @@ class Character(commands.Cog):
 
         if not characters:
             await interaction.response.send_message(
-                "❌ You don’t have any characters yet. Use `/createchar` first.",
+                "❌ You don’t have any characters yet. Use `/stats` and click **Create Character** to get started.",
                 ephemeral=True,
             )
             return
@@ -276,7 +190,7 @@ class Character(commands.Cog):
         for char in characters:
             info = (
                 f"**Level {char.level}** {char.race} {char.character_class}\n"
-                f"HP: {char.current_hp}/{char.max_hp} | AC: {char.armor_class} | XP: {char.exp}"
+                f"HP: {char.current_hp}/{char.max_hp} | AC: {char.effective_ac()} | XP: {char.exp}"
             )
             embed.add_field(name=char.name, value=info, inline=False)
 
@@ -491,7 +405,8 @@ class NameInputModal(discord.ui.Modal, title="Character Name"):
                 race=self.race,
                 abilities=abilities,
                 max_hp=starting_hp,
-                current_hp=starting_hp
+                current_hp=starting_hp,
+                speed=RACE_SPEEDS.get(self.race, 30),
             )
             self.db.save_character(character)
             

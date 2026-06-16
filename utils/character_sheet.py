@@ -75,6 +75,9 @@ class CharacterSheet:
     silver: int = 0
     copper: int = 0
     
+    # Inspiration
+    inspiration: bool = False
+
     # Roleplay
     personality_traits: List[str] = field(default_factory=list)
     ideals: List[str] = field(default_factory = list)
@@ -193,10 +196,14 @@ class CharacterSheet:
     
     def initiative_bonus(self) -> int:
         return self.get_modifier("dexterity")
+
+    def effective_ac(self) -> int:
+        return self.armor_class + self.get_modifier("dexterity")
     
     def saving_throw_bonus(self, ability_name: str) -> int:
-        key  = ability_name.lower().strip()
-        if key not in ABILITY_NAMES:
+        key = ability_name.lower().strip()
+        valid = [a.lower() for a in ABILITY_NAMES]
+        if key not in valid:
             raise ValueError(f"Unknown ability: {ABILITY_NAMES}")
         bonus = self.get_modifier(key)
         if key in self.saving_throw_proficiencies:
@@ -205,9 +212,10 @@ class CharacterSheet:
 
     def skill_bonus(self, skill_name: str) -> int:
         key = skill_name.lower().strip()
-        if key not in SKILL_TO_ABILITY:
+        skill_map = {k.lower(): v for k, v in SKILL_TO_ABILITY.items()}
+        if key not in skill_map:
             raise ValueError(f"Unknown skill: {skill_name}")
-        base = self.get_modifier(SKILL_TO_ABILITY[key])
+        base = self.get_modifier(skill_map[key])
         if key in self.skill_proficiencies:
             base += self.proficiency_bonus()
         return base
@@ -300,10 +308,10 @@ class CharacterSheet:
         return {
             "hp": f"{self.current_hp}/{self.max_hp}",
             "temp_hp": self.temp_hp,
-            "ac": self.armor_class,
+            "ac": self.effective_ac(),
             "initiative": self.initiative_bonus(),
             "speed": self.speed,
-            "passive_perception":self.passive_perception()
+            "passive_perception": self.passive_perception(),
         }
         
     def to_dict(self) -> Dict[str, Any]:
@@ -329,6 +337,7 @@ class CharacterSheet:
             "gold": self.gold,
             "silver": self.silver,
             "copper": self.copper,
+            "inspiration": self.inspiration,
             "personality_traits": list(self.personality_traits),
             "ideals": list(self.ideals),
             "bonds": list(self.bonds),
@@ -388,6 +397,7 @@ class CharacterSheet:
             languages=list(data.get("languages", [])),
             class_features=list(data.get("class_features", [])),
             racial_traits=list(data.get("racial_traits", [])),
+            inspiration=bool(data.get("inspiration", False)),
             spellcasting_ability=data.get("spellcasting_ability"),
             spell_save_dc=int(data.get("spell_save_dc", 0)),
             spell_attack_bonus=int(data.get("spell_attack_bonus", 0)),

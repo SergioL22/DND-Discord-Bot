@@ -6,7 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils import db
+from utils import schema as db
 from utils.database import get_database
 
 
@@ -18,6 +18,33 @@ DND_CONDITIONS = [
     "Exhaustion 4", "Exhaustion 5", "Exhaustion 6",
     "Concentration", "Blessed", "Cursed", "Raging",
 ]
+
+CONDITION_EFFECTS: dict = {
+    "Blinded": "Can't see. Attacks **against** have advantage; **its** attacks have disadvantage. Auto-fails sight-based checks.",
+    "Charmed": "Can't attack or target the charmer with harmful abilities. Charmer has advantage on Charisma checks against it.",
+    "Deafened": "Can't hear. Auto-fails hearing-based checks.",
+    "Frightened": "Disadvantage on attacks and ability checks while it can see the source. Can't move **toward** the source.",
+    "Grappled": "Speed = **0**. Ends if grappler is incapacitated or creature is moved out of reach.",
+    "Incapacitated": "Can't take **Actions** or **Reactions**.",
+    "Invisible": "Can't be seen without special senses. Attacks **against** have disadvantage; **its** attacks have advantage.",
+    "Paralyzed": "**Incapacitated** — can't act or react. Auto-fails STR/DEX saves. Attacks against have **advantage**. Hits within 5 ft are **critical hits**.",
+    "Petrified": "**Incapacitated**, transformed to stone. Resistance to all damage. Immune to poison/disease. Auto-fails STR/DEX saves. Attacks against have **advantage**.",
+    "Poisoned": "**Disadvantage** on attack rolls and ability checks.",
+    "Prone": "**Disadvantage** on attack rolls. Attacks within 5 ft against have **advantage**; ranged attacks against have **disadvantage**. Must spend half movement to stand.",
+    "Restrained": "Speed = **0**. Attacks **against** have advantage; **its** attacks have disadvantage. **Disadvantage** on DEX saves.",
+    "Stunned": "**Incapacitated** — can't act, react, or move. Can only speak falteringly. Auto-fails STR/DEX saves. Attacks against have **advantage**.",
+    "Unconscious": "**Incapacitated**, drops items, falls **Prone**. Auto-fails STR/DEX saves. Attacks against have **advantage**. Hits within 5 ft are **critical hits**.",
+    "Exhaustion 1": "**Disadvantage** on all ability checks.",
+    "Exhaustion 2": "Speed **halved**.",
+    "Exhaustion 3": "**Disadvantage** on attack rolls and saving throws.",
+    "Exhaustion 4": "Max HP **halved**.",
+    "Exhaustion 5": "Speed = **0**.",
+    "Exhaustion 6": "**Death.**",
+    "Concentration": "Maintaining a concentration spell. Taking damage requires a DC 10 (or half damage, whichever is higher) **CON save** or the spell ends.",
+    "Blessed": "May add **1d4** to attack rolls and saving throws.",
+    "Cursed": "DM-defined curse effects apply.",
+    "Raging": "**Advantage** on STR checks/saves. +2 melee damage. **Resistance** to bludgeoning, piercing, slashing damage. Can't cast or concentrate on spells.",
+}
 
 
 @dataclass
@@ -399,9 +426,18 @@ class Combat(commands.Cog):
 
         current = encounter.participants[encounter.current_index]
         self._save_encounter(interaction.channel_id)
-        await interaction.response.send_message(
-            f"➡️ **Round {encounter.round_number}** - It is now **{current.character_name}**'s turn."
-        )
+
+        msg = f"➡️ **Round {encounter.round_number}** — It is now **{current.character_name}**'s turn."
+        if current.conditions:
+            reminders = []
+            for cond in current.conditions:
+                effect = CONDITION_EFFECTS.get(cond)
+                if effect:
+                    reminders.append(f"**{cond}:** {effect}")
+                else:
+                    reminders.append(f"**{cond}**")
+            msg += "\n\n**Active conditions:**\n" + "\n".join(f"> {r}" for r in reminders)
+        await interaction.response.send_message(msg)
 
     @combat_group.command(name="prev", description="Move turn back to the previous participant")
     async def previous_turn(self, interaction: discord.Interaction):
@@ -605,9 +641,12 @@ class Combat(commands.Cog):
 
         participant.conditions.append(condition)
         self._save_encounter(interaction.channel_id)
-        await interaction.response.send_message(
-            f"🔴 **{participant.character_name}** is now **{condition}**."
-        )
+
+        effect = CONDITION_EFFECTS.get(condition, "")
+        msg = f"🔴 **{participant.character_name}** is now **{condition}**."
+        if effect:
+            msg += f"\n> {effect}"
+        await interaction.response.send_message(msg)
 
     @combat_group.command(name="removecondition", description="Remove a condition from a combatant")
     @app_commands.describe(character_name="Target combatant", condition="Condition to remove")

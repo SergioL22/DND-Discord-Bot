@@ -3,7 +3,7 @@ import logging
 from typing import Dict, List, Optional
 
 from utils.character_sheet import CharacterSheet
-from utils.db import _lock, get_connection
+from utils.schema import _lock, get_connection
 
 logger = logging.getLogger(__name__)
 

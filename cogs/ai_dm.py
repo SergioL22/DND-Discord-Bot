@@ -10,7 +10,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from config import Config
-from utils import db
+from utils import schema as db
 from utils.database import get_database
 
 
@@ -279,7 +279,7 @@ class AIDM(commands.Cog):
                 )
                 checklist_embed.add_field(
                     name="Step 1 — Create your character",
-                    value="```/createchar```",
+                    value="Use `/stats` and click **Create Character** to roll and register your character.",
                     inline=False,
                 )
                 checklist_embed.add_field(
@@ -323,6 +323,7 @@ class AIDM(commands.Cog):
 
     @dm_group.command(name="scene", description="Ask AI DM to narrate the next scene")
     @app_commands.describe(player_action="What the party does next")
+    @app_commands.checks.cooldown(1, 30.0)
     async def scene(self, interaction: discord.Interaction, player_action: str):
         if interaction.channel_id is None:
             await interaction.response.send_message(
@@ -439,6 +440,7 @@ class AIDM(commands.Cog):
 
     @dm_group.command(name="talk", description="Talk to an NPC with AI-driven dialogue")
     @app_commands.describe(npc_name="NPC you are speaking to", message="What your character says")
+    @app_commands.checks.cooldown(1, 20.0)
     async def talk_to_npc(self, interaction: discord.Interaction, npc_name: str, message: str):
         if interaction.channel_id is None:
             await interaction.response.send_message(
@@ -524,6 +526,7 @@ class AIDM(commands.Cog):
             await interaction.followup.send(content=chunk)
 
     @dm_group.command(name="encounter", description="Generate a combat encounter and start initiative tracking")
+    @app_commands.checks.cooldown(1, 60.0)
     @app_commands.describe(
         description="What kind of encounter? e.g. 'bandits ambush the party at a crossroads'",
         difficulty="How tough the encounter should be",

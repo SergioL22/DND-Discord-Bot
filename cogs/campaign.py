@@ -7,7 +7,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from utils import db
+from utils import schema as db
 
 logger = logging.getLogger(__name__)
 
